@@ -1,0 +1,44 @@
+# ESP32-C6 Macropad - sdkconfig defaults
+# Hedef: ESP32-C6-MINI-1, ESP-IDF v6.0.x
+#
+# Onemli: RXD0/TXD0 (GPIO30/31) LED shift register'a ayrildigi icin
+# UART0 console KAPALIDIR. Log cikisi USB Serial/JTAG uzerinden yapilir
+# (ESP32-C6'da USB-OTG yoktur; yerlesik USB Serial/JTAG controller kullanilir).
+
+# --- Hedef chip ---
+CONFIG_IDF_TARGET="esp32c6"
+
+# --- Console / Log ---
+# UART0 console'u kapat (RXD0/TXD0 LED SR'a ayrildi).
+# ESP-IDF v6'da ESP_CONSOLE_UART_NONE yok; USB_SERIAL_JTAG=y secilince
+# UART otomatik olarak console olmaz. RXD0/TXD0 GPIO30/31 serbest kalir.
+CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
+CONFIG_ESP_CONSOLE_SECONDARY_NONE=y
+
+# --- NVS ---
+CONFIG_NVS_ENABLED=y
+CONFIG_NVS_ENCRYPTION=n
+
+# --- Partition table ---
+# Single factory app + NVS (default) yeterli; OTA Bölüm 6 sonraya birakildigindan
+# custom partition table gerekmez.
+CONFIG_PARTITION_TABLE_SINGLE_APP=y
+
+# --- Wi-Fi (ESP-NOW icin gerekli) ---
+CONFIG_ESP_WIFI_ENABLED=y
+CONFIG_ESP_WIFI_NVS_ENABLED=y
+
+# --- FreeRTOS / Sleep ---
+CONFIG_FREERTOS_HZ=1000
+CONFIG_FREERTOS_USE_TICKLESS_IDLE=y
+
+# --- RMT (Neopixel) ---
+# Yeni RMT API (v6): TX ISR handler IRAM'da calisir (encoder IRAM-safe).
+CONFIG_RMT_TX_ISR_HANDLER_IN_IRAM=y
+
+# --- Stack sizes ---
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=4096
+
+# --- Deep sleep ---
+CONFIG_PM_ENABLE=y
+CONFIG_PM_POWER_DOWN_CPU_IN_LIGHT_SLEEP=y

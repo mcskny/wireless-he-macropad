@@ -1,0 +1,96 @@
+# SPDX-License-Identifier: MIT-only
+# Copyright (c) 2026 ESP32-C6 Macropad. All rights reserved.
+#
+# menuconfig uzerinden yapilabilen proje ayarlari.
+# Komut: idf.py menuconfig -> "ESP32-C6 Macropad" menusu.
+
+menu "ESP32-C6 Macropad"
+
+    menu "ESP-NOW / S3 Baglanti"
+        config S3_PEER_MAC
+            string "S3 alici MAC adresi (xx:xx:xx:xx:xx:xx formatinda)"
+            default "AA:BB:CC:DD:EE:FF"
+            help
+                ESP-NOW paketlerinin gonderilecegi S3'un MAC adresi.
+                NVS override destegi ileride eklenebilir; simdilik sabit.
+
+        config ESPNOW_CHANNEL
+            int "ESP-NOW Wi-Fi kanali (1-13)"
+            default 6
+            range 1 13
+            help
+                S3 ile ayni kanalda olmalidir.
+    endmenu
+
+    menu "Varsayilan Degerler (NVS ilk acilis)"
+        config ACTIVE_POWER_MODE_DEFAULT
+            int "Varsayilan guc modu (0=Dijital, 1=Hibrit, 2=Agresif)"
+            default 1
+            range 0 2
+
+        config BASE_BRIGHTNESS_DEFAULT
+            int "Varsayilan taban parlaklik (%)"
+            default 60
+            range 0 100
+
+        config ACTIVE_LAYER_DEFAULT
+            int "Varsayilan aktif katman"
+            default 0
+            range 0 4
+    endmenu
+
+    menu "Fail-Safe / Baglanti Sagligi"
+        config ESPNOW_FAILSAFE_THRESHOLD
+            int "Arama moduna gecis icin ardisik basarisiz paket sayisi"
+            default 100
+            range 1 1000
+            help
+                Bu sayiya ulasilinca sistem 1 Hz'e dusurur ve analog/LED
+                MOSFET'lerini kapatir (Bölüm 2.2).
+    endmenu
+
+    menu "Hibrit Mod Inaktivite"
+        config HYBRID_INACTIVITY_TIMEOUT_MS
+            int "Hibrit mod inaktivite zaman asimi (ms)"
+            default 900000
+            range 10000 3600000
+            help
+                Varsayilan 900000 ms = 15 dakika (Bölüm 4.2).
+    endmenu
+
+    menu "Pil Olcumu"
+        config BATTERY_MEASURE_PERIOD_MS
+            int "Pil voltaj olcum periyodu (ms)"
+            default 10000
+            range 1000 60000
+            help
+                Varsayilan 10000 ms = 10 saniye (Bölüm 4.4).
+    endmenu
+
+    menu "Packet Rate"
+        config PACKET_RATE_ACTIVE_HZ
+            int "Aktif paket gonderim hizi (Hz) - Agresif/Hibrit aktif"
+            default 1000
+            range 100 1000
+            help
+                Varsayilan 1000 Hz = 1 kHz (Bölüm 4.2 / 4.3).
+
+        config PACKET_RATE_SEARCH_HZ
+            int "Arama modu (fail-safe) paket hizi (Hz)"
+            default 1
+            range 1 10
+            help
+                Baglanti koptugunda dusulen hiz (Bölüm 2.2).
+    endmenu
+
+    menu "Wakeup Polling"
+        config WAKEUP_POLL_PERIOD_MS
+            int "Encoder/SR buton polling periyodu (ms) - light sleep sirasinda"
+            default 50
+            range 10 500
+            help
+                Diot-OR sadece 12 dijital tusu OR'lar; encoder ve SW2/ENC_BTN
+                SR uzerinden okundugu icin periyodik timer wake ile poll edilir.
+    endmenu
+
+endmenu
