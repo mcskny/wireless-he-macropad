@@ -15,3 +15,11 @@ pcb_pinler.md
 *.pyc
 __pycache__/
 .DS_Store
+
+
+# KiCad Temporary & Local User Files
+*.kicad_prl
+*.wbk
+*.net
+*.rpt
+.history/
