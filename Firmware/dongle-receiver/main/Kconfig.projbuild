@@ -1,0 +1,92 @@
+# SPDX-License-Identifier: MIT-only
+# Copyright (c) 2026 ESP32-S3 Dongle. All rights reserved.
+#
+# menuconfig uzerinden yapilabilen proje ayarlari.
+# Komut: idf.py menuconfig -> "ESP32-S3 Dongle" menusu.
+
+menu "ESP32-S3 Dongle"
+
+    menu "ESP-NOW RX (C6 baglanti)"
+        config C6_PEER_MAC
+            string "C6 gonderici MAC adresi (xx:xx:xx:xx:xx:xx)"
+            default "AA:BB:CC:DD:EE:FF"
+            help
+                S3 bu MAC'den gelen paketleri kabul eder (MAC filtre).
+
+        config ESPNOW_CHANNEL
+            int "ESP-NOW Wi-Fi kanali (1-13)"
+            default 6
+            range 1 13
+            help
+                C6 ile ayni kanalda olmalidir.
+    endmenu
+
+    menu "Watchdog (C6 baglanti sagligi)"
+        config C6_WATCHDOG_TIMEOUT_MS
+            int "C6 baglanti kopma timeout (ms)"
+            default 1000
+            range 100 10000
+            help
+                Bu sure boyunca C6'dan paket gelmezse tum tuşlar birakilir (Bölüm 3).
+    endmenu
+
+    menu "USB HID (TinyUSB)"
+        config USB_POLL_INTERVAL_MS
+            int "USB poll interval (ms) - bInterval"
+            default 1
+            range 1 10
+            help
+                1 = 1000Hz. TinyUSB raporlama hizi.
+
+        config USB_NKRO_MAX_KEYS
+            int "NKRO maksimum eszamanli tuş sayisi"
+            default 32
+            range 6 64
+    endmenu
+
+    menu "Wi-Fi AP (CONFIG_AP_MODE)"
+        config AP_SSID
+            string "Wi-Fi AP SSID"
+            default "S3-Dongle-Config"
+
+        config AP_PASSWORD
+            string "Wi-Fi AP sifre (bos = acik)"
+            default ""
+
+        config AP_CHANNEL
+            int "Wi-Fi AP kanali"
+            default 6
+            range 1 13
+
+        config AP_MAX_CONNECTIONS
+            int "Maksimum AP istemci sayisi"
+            default 1
+            range 1 4
+    endmenu
+
+    menu "Hall Effect (Bölüm 4)"
+        config HALL_HYSTERESIS
+            float "Geleneksel mod histerezis degeri [0.0-1.0]"
+            default 0.1
+            help
+                Tuş birakma eşiği = actuation_point - hysteresis.
+
+        config HALL_RT_MIN_BOUNDARY
+            float "RT minimum sinir [0.0-1.0]"
+            default 0.0
+
+        config HALL_RT_MAX_BOUNDARY
+            float "RT maksimum sinir [0.0-1.0]"
+            default 1.0
+    endmenu
+
+    menu "Packet Rate"
+        config S3_LOOP_RATE_HZ
+            int "Ana döngü hizi (Hz) - NORMAL_MODE"
+            default 1000
+            range 100 1000
+            help
+                1000 Hz = 1 kHz (C6 ile eszamanli, Bölüm 6).
+    endmenu
+
+endmenu
