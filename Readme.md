@@ -87,22 +87,14 @@ This repository uses a **modular C architecture** built on top of the ESP-IDF fr
 
 ```text
 wireless-he-macropad/
-├── docs/                           # Documentation & Images
+├── Docs/                           # Documentation & Images
 │   └── images/                     # Photos, PCB diagrams, 3D renders
-├── firmware/                       # ESP-IDF Firmware Codebase
+├── Firmware/                       # ESP-IDF Firmware Codebase
 │   ├── common/                     # Shared protocol definitions (keyboard_protocol.h)
 │   ├── macropad-sender/            # Keyboard (Transmitter) Firmware
 │   └── dongle-receiver/            # USB Dongle (Receiver) Firmware
-├── components/                     # Modular C Custom Engines
-│   ├── hall_effect_engine/        # Magnetic switch sensing & Rapid Trigger algorithms
-│   ├── layer_manager/             # 4-Layer switching logic (Keys, Encoder, RGB)
-│   ├── macro_engine/              # Custom macro execution engine
-│   ├── espnow_rx/                 # Low-latency 2.4GHz ESP-NOW wireless module
-│   ├── config_ap/                 # Web-based Access Point configuration portal
-│   ├── usb_hid/                   # USB HID Keyboard class implementation
-│   ├── usb_power/                 # Power gating, battery monitoring, sleep logic
-│   └── watchdog/                  # System safety & task watchdog monitors
-├── hardware/                       # KiCad PCB Files & Gerber Exports
+|
+├── Hardware/                       # KiCad PCB Files & Gerber Exports
 │   ├── macropad.kicad_pro
 │   ├── macropad.kicad_sch
 │   ├── macropad.kicad_pcb
