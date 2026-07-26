@@ -173,10 +173,4 @@ esptool.py -p COM4 -b 921600 write_flash 0x10000 firmware/dongle-receiver/build/
 
 ---
 
-## 🤝 Contributing & License
-
-Contributions, issues, and feature requests are welcome! Feel free to check the [issues page](../../issues).
-
 Distributed under the **MIT License**. See `LICENSE` for more information.
-
----
