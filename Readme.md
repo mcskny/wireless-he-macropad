@@ -20,12 +20,12 @@ A high-performance, open-source **wireless mechanical macropad** that solves the
 <table>
   <tr>
     <td align="center" width="50%">
-      <img src="docs/images/macropad.png" style="border-radius: 10px;" height="350" alt="3D Render">
+      <img src="Docs/images/macropad.png" style="border-radius: 10px;" height="350" alt="3D Render">
       <br>
       <b>3D Enclosure Render</b>
     </td>
     <td align="center" width="50%">
-      <img src="docs/images/pcb.png" style="border-radius: 10px;" height="350" alt="PCB Design">
+      <img src="Docs/images/pcb.png" style="border-radius: 10px;" height="350" alt="PCB Design">
       <br>
       <b>4-Layer PCB Design</b>
     </td>
