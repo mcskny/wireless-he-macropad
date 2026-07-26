@@ -9,6 +9,7 @@ ESP32-C6_algoritma.md
 esp32-c6-mini-1_mini-1u_datasheet_en.pdf
 pcb_pinler.md
 
+
 # Editör ve Sistem Çöpleri
 .vscode/
 .idea/
@@ -23,3 +24,5 @@ __pycache__/
 *.net
 *.rpt
 .history/
+~macropad.kicad_pro.lck
+~macropad.kicad_pcb.lck
