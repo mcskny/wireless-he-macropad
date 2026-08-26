@@ -4,6 +4,8 @@
 
 # Custom Wireless Hall Effect (HE) & Digital Macropad
 
+## Wireless Hall Effect mechanical macropad with hybrid analog/digital sensing, MOSFET power gating, and dual ESP32 (C6 transmitter / S3 dongle) architecture.
+
 [![ESP-IDF](https://img.shields.io/badge/ESP--IDF-v6.0.2%2B-blue)](https://github.com/espressif/esp-idf)
 [![Docker](https://img.shields.io/badge/Docker-Supported-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
@@ -162,6 +164,7 @@ esptool.py -p COM3 -b 921600 write_flash 0x10000 firmware/macropad-sender/build/
 # Flash Receiver
 esptool.py -p COM4 -b 921600 write_flash 0x10000 firmware/dongle-receiver/build/dongle-receiver.bin
 ```
+Topics: esp32, esp-idf, hall-effect, mechanical-keyboard, macropad, kicad, rapid-trigger, usb-hid
 
 ---
 
