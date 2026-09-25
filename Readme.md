@@ -49,9 +49,9 @@ This project solves the battery crisis by implementing a **MOSFET-gated Hybrid P
 ###  Smart Power System & Operation Modes
 - **MOSFET Power Gating:** Hardware-level power cutoff for analog Hall Effect ICs.
 - **3 Dynamic Power Modes:**
-  - 🟢 **Digital Mode:** Operates exclusively on digital switches for ultra-low power consumption and maximum battery longevity.
-  - 🟡 **Hybrid Mode (Smart Wake):** Digital switches remain active; pressing any key instantly powers on the Analog HE sensors via MOSFETs for a configurable duration.
-  - 🔴 **Aggressive Mode:** Analog HE sensors remain continuously powered for zero-latency competitive esports performance.
+  -  **Digital Mode:** Operates exclusively on digital switches for ultra-low power consumption and maximum battery longevity.
+  -  **Hybrid Mode (Smart Wake):** Digital switches remain active; pressing any key instantly powers on the Analog HE sensors via MOSFETs for a configurable duration.
+  -  **Aggressive Mode:** Analog HE sensors remain continuously powered for zero-latency competitive esports performance.
 
 ### Esports Performance Algorithms
 - **Rapid Trigger:** Dynamic actuation and reset points based on real-time key travel distance.
@@ -70,12 +70,12 @@ This project solves the battery crisis by implementing a **MOSFET-gated Hybrid P
 - **4-Layer PCB Stackup:** Optimized trace routing, power planes, and EMI/EMC shielding.
 
 ### Dual Microcontroller Architecture
-- **📡 Transmitter / Keyboard (ESP32-C6):**
+- ** Transmitter / Keyboard (ESP32-C6):**
   - Powered by the ultra-low-power **ESP32-C6 (RISC-V 32-bit single-core CPU)**.
   - Supports Wi-Fi 6 (802.11ax), Bluetooth 5.3 (LE), and 802.15.4 for ultra-efficient wireless data transmission.
   - Optimized sleep modes for long battery life.
 
-- **🔌 Receiver / Dongle (ESP32-S3):**
+- ** Receiver / Dongle (ESP32-S3):**
   - Powered by the high-performance **ESP32-S3 (Dual-core Xtensa LX7 CPU)**.
   - Features **Native USB OTG / Full-Speed USB Controller** to act as a hardware-level USB HID Keyboard to the host PC without needing USB-to-UART conversion chips.
 
