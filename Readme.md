@@ -7,7 +7,7 @@
 
 [![ESP-IDF](https://img.shields.io/badge/ESP--IDF-v6.0.2%2B-blue)](https://github.com/espressif/esp-idf)
 [![Docker](https://img.shields.io/badge/Docker-Supported-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
-[![Status](https://img.shields.io/badge/Hardware-4--Layer%20PCB-orange)](#-hardware-specifications)
+(#-hardware-specifications)
 
 A high-performance, open-source **wireless mechanical macropad** that solves the battery drain issue of wireless Hall Effect keyboards. Featuring a **Hybrid Dual-Sensor Architecture (Analog HE + Digital Switches)**, MOSFET power gating, esports-grade algorithms (Rapid Trigger, SnapTap/SOCD), 4 hardware layers, and a high-efficiency **TPS6300x Buck-Boost power system**.
 
