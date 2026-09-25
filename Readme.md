@@ -71,12 +71,12 @@ This project solves the battery crisis by implementing a **MOSFET-gated Hybrid P
 
 ### Dual Microcontroller Architecture
 - ** Transmitter / Keyboard (ESP32-C6):**
-  - Powered by the ultra-low-power **ESP32-C6 (RISC-V 32-bit single-core CPU)**.
+  - Powered by the ultra-low-power **ESP32-C6**.
   - Supports Wi-Fi 6 (802.11ax), Bluetooth 5.3 (LE), and 802.15.4 for ultra-efficient wireless data transmission.
   - Optimized sleep modes for long battery life.
 
 - ** Receiver / Dongle (ESP32-S3):**
-  - Powered by the high-performance **ESP32-S3 (Dual-core Xtensa LX7 CPU)**.
+  - Powered by the high-performance **ESP32-S3**.
   - Features **Native USB OTG / Full-Speed USB Controller** to act as a hardware-level USB HID Keyboard to the host PC without needing USB-to-UART conversion chips.
 
 ---
