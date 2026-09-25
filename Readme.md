@@ -53,31 +53,7 @@ This project solves the battery crisis by implementing a **MOSFET-gated Hybrid P
   -  **Hybrid Mode (Smart Wake):** Digital switches remain active; pressing any key instantly powers on the Analog HE sensors via MOSFETs for a configurable duration.
   -  **Aggressive Mode:** Analog HE sensors remain continuously powered for zero-latency competitive esports performance.
 
-### Esports Performance Algorithms
-- **Rapid Trigger:** Dynamic actuation and reset points based on real-time key travel distance.
-- **SnapTap (SOCD):** Simultaneous Opposing Cardinal Directions prioritization for counter-strafing advantage in tactical shooters (CS2, Valorant).
-- **ActivePoint:** Per-key customizable actuation depth via software.
 
-### Deep Customization & 4 Hardware Layers
-- **4 Hardware Layers:** Dedicated hardware layer button to toggle through 4 independent configurations.
-- **Per-Layer Remapping:** Full customization over Rotary Encoder functions, Encoder Push Button, Switch keycodes, and Addressable RGB (Neopixel) LED animations per layer.
-- **Web AP Portal (`config_ap`):** Onboard Wi-Fi Access Point portal for web-based configuration.
-
-### Hardware & Power Circuitry
-- **TPS6300x Buck-Boost Converter:** High-efficiency power regulation supplying a rock-solid 3.3V rail across the entire discharge curve of an 18650 Li-Ion battery (4.2V down to 3.0V).
-- **18650 Li-Ion Power:** Powered by a high-capacity rechargeable 18650 cell.
-- **Fast Charging:** Integrated Li-Ion charger supporting up to 1A charge current (scalable to 2A on future PCB revisions).
-- **4-Layer PCB Stackup:** Optimized trace routing, power planes, and EMI/EMC shielding.
-
-### Dual Microcontroller Architecture
-- ** Transmitter / Keyboard (ESP32-C6):**
-  - Powered by the ultra-low-power **ESP32-C6**.
-  - Supports Wi-Fi 6 (802.11ax), Bluetooth 5.3 (LE), and 802.15.4 for ultra-efficient wireless data transmission.
-  - Optimized sleep modes for long battery life.
-
-- ** Receiver / Dongle (ESP32-S3):**
-  - Powered by the high-performance **ESP32-S3**.
-  - Features **Native USB OTG / Full-Speed USB Controller** to act as a hardware-level USB HID Keyboard to the host PC without needing USB-to-UART conversion chips.
 
 ---
 
