@@ -54,6 +54,15 @@ reused or overwritten after publication.
 - Some key output, profile persistence, Rapid Trigger and SOCD tests passed.
   ESP-NOW broadcast frames do not authenticate the sender.
 
+## Studio 0.1.1 — 2026-11-05 (pre-release)
+
+- Shows disconnected status on 2D/3D live and lighting views, detects a local
+  Bluetooth HID device without reading keyboard events, and explains the BLE
+  versus USB connection limitations in settings.
+- Native build and existing unit tests passed. Live telemetry and profile/lighting
+  configuration over BLE remain unimplemented; device detection does not prove
+  that the physical link or individual keys are functioning.
+
 ## Studio 0.1.0 — 2026-11-05 (pre-release)
 
 - Native Mac interface, sensor visualization, calibration, profiles, device

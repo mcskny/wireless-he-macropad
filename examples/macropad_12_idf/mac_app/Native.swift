@@ -4,6 +4,7 @@ import Charts
 import Combine
 import Darwin
 import ApplicationServices
+import IOKit
 
 struct LightConfig: Codable, Equatable {
     var effect="Sabit"; var color="#A6F0CA"; var brightness=60.0; var speed=50.0
@@ -143,6 +144,20 @@ final class DrivingBridge {
 }
 // Mac input is deliberately opt-in and separate from the CrossOver test bridge.
 // Unsupported descriptive profile tasks never generate guessed shortcuts.
+// Observe published HID devices only; never open or capture keyboard input.
+private func wirelessHEBluetoothHIDPresent() -> Bool {
+    var iterator:io_iterator_t=0
+    guard IOServiceGetMatchingServices(kIOMainPortDefault,IOServiceMatching("IOHIDDevice"),&iterator)==KERN_SUCCESS else{return false}
+    defer {IOObjectRelease(iterator)}
+    while true {
+        let service=IOIteratorNext(iterator);if service==0 {break}
+        let name=IORegistryEntryCreateCFProperty(service,"Product" as CFString,kCFAllocatorDefault,0)?.takeRetainedValue() as? String ?? ""
+        let transport=IORegistryEntryCreateCFProperty(service,"Transport" as CFString,kCFAllocatorDefault,0)?.takeRetainedValue() as? String ?? ""
+        IOObjectRelease(service)
+        if name=="Wireless HE" && transport.localizedCaseInsensitiveContains("Bluetooth") {return true}
+    }
+    return false
+}
 final class MacKeyOutput {
     struct Key: Hashable { let code:CGKeyCode; let flags:UInt64 }
     private var down:Set<Key> = []
@@ -261,6 +276,9 @@ final class MacKeyOutput {
 }
 
 final class StudioModel: ObservableObject {
+    @Published private(set) var bluetoothHIDPresent=false
+    private var bluetoothStatusTimer:Timer?
+    var deviceVisible:Bool {freshSensor || bluetoothHIDPresent}
     @Published var config:Config { didSet { if let d=try? JSONEncoder().encode(config) { UserDefaults.standard.set(d,forKey:"native-config-v1") } } }
     @Published var macOutputEnabled=false {didSet {if !macOutputEnabled {macKeyOutput.releaseAll();macPressed=Array(repeating:false,count:12)}}}
     private let macKeyOutput=MacKeyOutput()
@@ -571,6 +589,11 @@ final class StudioModel: ObservableObject {
         if ["Canlı test","Katmanlar","Oyun profili","Hall ayarları","Aydınlatma","Güç ve pil","Gelişmiş"].contains(start) {page=start}
         migrateLegacyGame()
         startServer()
+        bluetoothHIDPresent=wirelessHEBluetoothHIDPresent()
+        bluetoothStatusTimer=Timer.scheduledTimer(withTimeInterval:2.0,repeats:true){[weak self] _ in
+            let present=wirelessHEBluetoothHIDPresent()
+            if self?.bluetoothHIDPresent != present {self?.bluetoothHIDPresent=present}
+        }
         lightingTimer=Timer.scheduledTimer(withTimeInterval:1.0/24.0,repeats:true){[weak self] _ in
             guard let self=self else{return}
             guard NSApp.mainWindow?.occlusionState.contains(.visible) == true else{return}
@@ -614,7 +637,7 @@ final class StudioModel: ObservableObject {
         do { try p.run(); task=p } catch { self.error="Test sunucusu başlatılamadı: \(error.localizedDescription)"; return }
         timer=Timer.scheduledTimer(withTimeInterval:0.02,repeats:true) { [weak self] _ in self?.poll() }
     }
-    func stop() { macOutputEnabled=false;driveOutputEnabled=false;timer?.invalidate();lightingTimer?.invalidate(); if let p=task,p.isRunning { p.interrupt() } }
+    func stop() { macOutputEnabled=false;driveOutputEnabled=false;timer?.invalidate();lightingTimer?.invalidate();bluetoothStatusTimer?.invalidate(); if let p=task,p.isRunning { p.interrupt() } }
     func poll() {
         if lastSensorSampleID != nil && ProcessInfo.processInfo.systemUptime-lastSensorSampleAt >= 0.3 && triggerStates.contains(true) {resetLocalTriggers()}
         if macOutputEnabled && ProcessInfo.processInfo.systemUptime-lastSensorSampleAt >= 0.3 {
@@ -807,7 +830,11 @@ struct MainView:View {
         NavigationSplitView {
             VStack(alignment:.leading,spacing:16){HStack{Image(nsImage:studioGridIcon).resizable().interpolation(.high).frame(width:30,height:30);VStack(alignment:.leading){Text("WIRELESS HE").font(.headline);Text("MACROPAD STUDIO").font(.caption2).foregroundStyle(.secondary)}}.padding(.horizontal,12).padding(.top,20)
                 List(selection:$model.page){ForEach(pages,id:\.0){p in Label { Text(LocalizedStringKey(p.0)) } icon: { Image(systemName:p.1) }.tag(p.0)}}.listStyle(.sidebar)
-                VStack(alignment:.leading,spacing:5){HStack(spacing:7){Circle().fill(model.values == nil ? Color.orange : accent).frame(width:7,height:7);Text(LocalizedStringKey(model.values == nil ? "SENSÖR BEKLENİYOR" : "SENSÖR VERİSİ GELİYOR")).font(.caption2.bold()).foregroundStyle(model.values == nil ? Color.orange : accent)};Text("USB sensör veri akışı").font(.caption.weight(.semibold));Text("S3 ile kablosuz durum doğrulanmadı").font(.caption2).foregroundStyle(.secondary)}.padding(14)
+                VStack(alignment:.leading,spacing:5){
+                    HStack(spacing:7){Circle().fill(model.deviceVisible ? accent : Color.orange).frame(width:8,height:8);Text(LocalizedStringKey(model.deviceVisible ? "CİHAZ GÖRÜLÜYOR" : "CİHAZ BAĞLI DEĞİL")).font(.caption2.bold()).foregroundStyle(model.deviceVisible ? accent : Color.orange)}
+                    Text(LocalizedStringKey(model.freshSensor ? "USB · sensör verisi geliyor" : model.bluetoothHIDPresent ? "BLE · klavye algılandı" : "Cihaz bağlantısı bekleniyor")).font(.caption.weight(.semibold))
+                    if model.bluetoothHIDPresent && !model.freshSensor {Text("BLE üzerinden sensör verisi henüz desteklenmiyor").font(.caption2).foregroundStyle(.secondary)}
+                }.padding(14)
             }.navigationSplitViewColumnWidth(min:190,ideal:220)
         } detail: {
             ScrollView { VStack(alignment:.leading,spacing:18) {
@@ -983,10 +1010,27 @@ struct RateStatusCard:View {
         }}
     }
 }
+struct DeviceConnectionBadge:View {
+    @ObservedObject var model:StudioModel
+    var body:some View {
+        if !model.deviceVisible {
+            Label("Cihaz bağlı değil",systemImage:"exclamationmark.triangle.fill")
+                .font(.caption.bold()).foregroundStyle(.white)
+                .padding(.horizontal,10).padding(.vertical,7)
+                .background(Color.orange.opacity(0.9),in:Capsule())
+                .padding(10).accessibilityLabel(Text("Cihaz bağlı değil"))
+        } else if model.bluetoothHIDPresent && !model.freshSensor {
+            Label("BLE klavye algılandı · sensör verisi yok",systemImage:"antenna.radiowaves.left.and.right")
+                .font(.caption.bold()).foregroundStyle(.white)
+                .padding(.horizontal,10).padding(.vertical,7)
+                .background(Color.blue.opacity(0.85),in:Capsule()).padding(10)
+        }
+    }
+}
 struct LiveView:View {
     @ObservedObject var model:StudioModel
     @AppStorage("studio-view-3d") private var show3D=true
-    var body:some View { VStack(spacing:16){RateStatusCard(model:model);HStack(alignment:.top,spacing:16){GlassCard{VStack(alignment:.leading,spacing:14){HStack{SectionTitle(title:"Cihaz görünümü",subtitle:show3D ? "Sürükle: döndür · kaydır: yakınlaştır · tuşa tıkla" : "Bir tuşa tıklayarak kanalını seç");Spacer();Picker("Görünüm",selection:$show3D){Text("3B").tag(true);Text("2B").tag(false)}.labelsHidden().pickerStyle(.segmented).frame(width:100)};if show3D {MacropadModelView(model:model,clock:model.lightingClock).frame(height:310).clipShape(RoundedRectangle(cornerRadius:16))} else {KeyPad(model:model).frame(maxWidth:.infinity)};HStack{Toggle("Simülasyon",isOn:$model.simulate).toggleStyle(.switch);Spacer();Toggle("Işık önizleme",isOn:$model.lightingPreview).toggleStyle(.switch)}.font(.caption);if model.simulate {HStack{Text("KEY \(model.selected) · demo").font(.caption);Slider(value:$model.demoDepth,in:0...100,step:1);Text("\(Int(model.demoDepth))%").font(.caption.monospacedDigit());Button(model.demoDepth > 0 ? "Bırak" : "Bas"){model.demoDepth = model.demoDepth > 0 ? 0 : 100}};Text("Simülasyon sensör verisini değiştirmez.").font(.caption2).foregroundStyle(.secondary)}}};VStack(spacing:16){GlassCard{VStack(alignment:.leading,spacing:12){HStack{SectionTitle(title:"Anlık basılma",subtitle:"KEY \(model.selected) · \(model.selected%4+1). satır / \(model.selected/4+1). sütun");Spacer();Text(LocalizedStringKey(model.values == nil ? "BAĞLANTI BEKLENİYOR" : "USB · CANLI")).font(.caption2.bold()).foregroundStyle(model.values == nil ? .orange : accent)};HStack(alignment:.bottom){Text(model.percent(model.selected).map{String(format:"%.1f%%",$0)} ?? "— %").font(.system(size:48,weight:.semibold,design:.rounded)).foregroundStyle(accent);Spacer();VStack(alignment:.trailing){Text("HAM ADC").font(.caption2).foregroundStyle(.secondary);Text(model.values.map{String($0[model.selected])} ?? "—").font(.title3.monospacedDigit())}};ProgressView(value:(model.percent(model.selected) ?? 0),total:100).tint(accent)}};GlassCard{VStack(alignment:.leading){SectionTitle(title:"Sinyal geçmişi",subtitle:"Ham ADC · seçili tuş · 0–4095");ZStack { Chart(model.history){p in AreaMark(x:.value("Örnek",p.id),y:.value("ADC",p.value)).foregroundStyle(LinearGradient(colors:[accent.opacity(0.22),accent.opacity(0.01)],startPoint:.top,endPoint:.bottom));LineMark(x:.value("Örnek",p.id),y:.value("ADC",p.value)).foregroundStyle(accent).lineStyle(StrokeStyle(lineWidth:2)).interpolationMethod(.linear)}.chartYScale(domain:0...4095).chartYAxis { AxisMarks(position:.trailing,values:[0,1000,2000,3000,4000]) { _ in AxisGridLine(); AxisValueLabel().foregroundStyle(.secondary) } };if model.history.isEmpty {VStack(spacing:6){Image(systemName:"waveform.path").font(.title2).foregroundStyle(accent.opacity(0.65));Text("Sinyal bekleniyor").font(.caption.weight(.medium));Text("Cihaz bağlandığında grafik burada görünür").font(.caption2).foregroundStyle(.secondary)}.padding(12).background(.ultraThinMaterial,in:RoundedRectangle(cornerRadius:12))}}.frame(height:160)}}}}
+    var body:some View { VStack(spacing:16){RateStatusCard(model:model);HStack(alignment:.top,spacing:16){GlassCard{VStack(alignment:.leading,spacing:14){HStack{SectionTitle(title:"Cihaz görünümü",subtitle:show3D ? "Sürükle: döndür · kaydır: yakınlaştır · tuşa tıkla" : "Bir tuşa tıklayarak kanalını seç");Spacer();Picker("Görünüm",selection:$show3D){Text("3B").tag(true);Text("2B").tag(false)}.labelsHidden().pickerStyle(.segmented).frame(width:100)};Group {if show3D {MacropadModelView(model:model,clock:model.lightingClock).frame(height:310).clipShape(RoundedRectangle(cornerRadius:16))} else {KeyPad(model:model).frame(maxWidth:.infinity)}}.overlay(alignment:.topTrailing){DeviceConnectionBadge(model:model)};HStack{Toggle("Simülasyon",isOn:$model.simulate).toggleStyle(.switch);Spacer();Toggle("Işık önizleme",isOn:$model.lightingPreview).toggleStyle(.switch)}.font(.caption);if model.simulate {HStack{Text("KEY \(model.selected) · demo").font(.caption);Slider(value:$model.demoDepth,in:0...100,step:1);Text("\(Int(model.demoDepth))%").font(.caption.monospacedDigit());Button(model.demoDepth > 0 ? "Bırak" : "Bas"){model.demoDepth = model.demoDepth > 0 ? 0 : 100}};Text("Simülasyon sensör verisini değiştirmez.").font(.caption2).foregroundStyle(.secondary)}}};VStack(spacing:16){GlassCard{VStack(alignment:.leading,spacing:12){HStack{SectionTitle(title:"Anlık basılma",subtitle:"KEY \(model.selected) · \(model.selected%4+1). satır / \(model.selected/4+1). sütun");Spacer();Text(LocalizedStringKey(model.values == nil ? "BAĞLANTI BEKLENİYOR" : "USB · CANLI")).font(.caption2.bold()).foregroundStyle(model.values == nil ? .orange : accent)};HStack(alignment:.bottom){Text(model.percent(model.selected).map{String(format:"%.1f%%",$0)} ?? "— %").font(.system(size:48,weight:.semibold,design:.rounded)).foregroundStyle(accent);Spacer();VStack(alignment:.trailing){Text("HAM ADC").font(.caption2).foregroundStyle(.secondary);Text(model.values.map{String($0[model.selected])} ?? "—").font(.title3.monospacedDigit())}};ProgressView(value:(model.percent(model.selected) ?? 0),total:100).tint(accent)}};GlassCard{VStack(alignment:.leading){SectionTitle(title:"Sinyal geçmişi",subtitle:"Ham ADC · seçili tuş · 0–4095");ZStack { Chart(model.history){p in AreaMark(x:.value("Örnek",p.id),y:.value("ADC",p.value)).foregroundStyle(LinearGradient(colors:[accent.opacity(0.22),accent.opacity(0.01)],startPoint:.top,endPoint:.bottom));LineMark(x:.value("Örnek",p.id),y:.value("ADC",p.value)).foregroundStyle(accent).lineStyle(StrokeStyle(lineWidth:2)).interpolationMethod(.linear)}.chartYScale(domain:0...4095).chartYAxis { AxisMarks(position:.trailing,values:[0,1000,2000,3000,4000]) { _ in AxisGridLine(); AxisValueLabel().foregroundStyle(.secondary) } };if model.history.isEmpty {VStack(spacing:6){Image(systemName:"waveform.path").font(.title2).foregroundStyle(accent.opacity(0.65));Text("Sinyal bekleniyor").font(.caption.weight(.medium));Text("Cihaz bağlandığında grafik burada görünür").font(.caption2).foregroundStyle(.secondary)}.padding(12).background(.ultraThinMaterial,in:RoundedRectangle(cornerRadius:12))}}.frame(height:160)}}}}
         HStack(alignment:.top,spacing:16){GlassCard{VStack(alignment:.leading,spacing:12){SectionTitle(title:"Kalibrasyon",subtitle:"Tuş başına serbest ve tam basılı değerleri");Text(verbatim:studioDisplay("Serbest: \(model.config.calibration[model.channelMap[model.selected]].free.map(String.init) ?? "—")  ·  Basılı: \(model.config.calibration[model.channelMap[model.selected]].pressed.map(String.init) ?? "—")")).font(.caption.monospacedDigit()).foregroundStyle(.secondary);Button("Tüm serbest konumları kaydet"){model.captureAll()}.disabled(model.values == nil);HStack{Button("Seçili: serbest"){model.capture(false)};Button("Seçili: tam basılı"){model.capture(true)}}.disabled(model.values == nil);Text("Bu değerler yalnızca bu Mac uygulamasında saklanır.").font(.caption2).foregroundStyle(.secondary)}};GlassCard{VStack(alignment:.leading,spacing:12){SectionTitle(title:"Kanal tanılama",subtitle:"Her tuş için bağlı olduğu ham ADC kanalını eşle");LazyVGrid(columns:Array(repeating:GridItem(.flexible()),count:3),spacing:7){ForEach(0..<12){position in let i=(position%3)*4+position/3;VStack(alignment:.leading){Text(verbatim:studioDisplay("\(position/3+1). sıra · \(position%3+1). sütun")).font(.caption2).foregroundStyle(.secondary);Menu {ForEach(0..<12){channel in Button("ADC \(channel)"){model.assignChannel(channel,toKey:i)}}} label:{Text(verbatim:studioDisplay("Eşle · ADC \(model.channelMap[i])")).font(.caption2)};Text(model.values.map{String($0[i])} ?? "—").font(.caption.monospacedDigit().bold()).foregroundStyle(model.values.map{($0[i]==0 || $0[i]==4095)} == true ? .orange : .primary);Text(model.ranges[i].map{"\($0.lowerBound) – \($0.upperBound)"} ?? "—").font(.caption2).foregroundStyle(.secondary)}.frame(maxWidth:.infinity,alignment:.leading).padding(7).background(.white.opacity(0.04),in:RoundedRectangle(cornerRadius:7))}};Button("Min / maks sıfırla"){model.ranges=Array(repeating:nil,count:12)}.font(.caption);Text("Aynı kanalı seçersen iki tuşun kanalları yer değiştirir. Kalibrasyon yokken tuş hareketi yaklaşık gösterilir; kesin derinlik için kalibrasyon yap.").font(.caption2).foregroundStyle(.secondary)}}}}
         SensorToolsView(model:model)
         SerialSelectionView(model:model)
@@ -1643,11 +1687,13 @@ struct LightView:View {
             GlassCard {
                 VStack(alignment:.leading,spacing:14) {
                     HStack {SectionTitle(title:"Işık önizlemesi",subtitle:"Model üzerinde · yalnızca bu Mac’te");Spacer();Picker("Görünüm",selection:$show3D){Text("3B").tag(true);Text("2B").tag(false)}.labelsHidden().pickerStyle(.segmented).frame(width:100)}
-                    if show3D {
-                        MacropadModelView(model:model,clock:model.lightingClock).frame(height:345).clipShape(RoundedRectangle(cornerRadius:16))
-                    } else {
-                        KeyPad(model:model,showLabels:false).frame(maxWidth:.infinity,minHeight:345).padding(.vertical,8)
-                    }
+                    Group {
+                        if show3D {
+                            MacropadModelView(model:model,clock:model.lightingClock).frame(height:345).clipShape(RoundedRectangle(cornerRadius:16))
+                        } else {
+                            KeyPad(model:model,showLabels:false).frame(maxWidth:.infinity,minHeight:345).padding(.vertical,8)
+                        }
+                    }.overlay(alignment:.topTrailing){DeviceConnectionBadge(model:model)}
                     Label { Text(LocalizedStringKey(show3D ? "Sürükle: döndür" : "Tuşa tıkla: önizle")) } icon: { Image(systemName:show3D ? "rotate.3d" : "hand.tap") }.font(.caption).foregroundStyle(.secondary)
                     Text("Renk ve efektler görsel taslaktır; gerçek LED parlaklığını temsil etmez.").font(.caption).foregroundStyle(.secondary)
                 }
@@ -1773,6 +1819,11 @@ struct StudioSettingsView:View {
                 Picker("Tema",selection:$appearance){Text("Sistemle aynı").tag("system");Text("Açık").tag("light");Text("Koyu").tag("dark")}
                 Picker("Başlangıç sayfası",selection:$startPage){ForEach(["Canlı test","Katmanlar","Oyun profili","Hall ayarları","Aydınlatma","Güç ve pil","Gelişmiş"],id:\.self){Text(LocalizedStringKey($0)).tag($0)}}
             }
+            Section("Bluetooth") {
+                Text("BLE modunda Layer + KEY 0 bağlantı türünü değiştirir. Layer + alt sıradaki tuşlar üç cihazı seçer.").font(.caption)
+                Text("BLE şu anda klavye ve medya çıkışı sağlar. Canlı sensör verisi ve uygulamadan ayar yazma için S3 USB bağlantısı gerekir.").font(.caption).foregroundStyle(.secondary)
+                Button("Bluetooth ayarlarını aç") {if let url=URL(string:"x-apple.systempreferences:com.apple.BluetoothSettings") {NSWorkspace.shared.open(url)}}
+            }
             Section("Test ortamı") {
                 LabeledContent("Bağlantı",value:"USB sensör veri akışı")
                 LabeledContent("Yerel sunucu",value:"127.0.0.1:18768")
@@ -1829,7 +1880,7 @@ final class AppDelegate:NSObject,NSApplicationDelegate,NSWindowDelegate,NSMenuDe
         return true
     }
     @objc func showSettings(_ sender:Any?){
-        if settingsWindow == nil {let w=NSWindow(contentRect:NSRect(x:0,y:0,width:480,height:300),styleMask:[.titled,.closable,.miniaturizable],backing:.buffered,defer:false);w.title="Ayarlar";w.isReleasedWhenClosed=false;w.contentView=NSHostingView(rootView:StudioSettingsView());w.center();settingsWindow=w}
+        if settingsWindow == nil {let w=NSWindow(contentRect:NSRect(x:0,y:0,width:520,height:460),styleMask:[.titled,.closable,.miniaturizable],backing:.buffered,defer:false);w.title="Ayarlar";w.isReleasedWhenClosed=false;w.contentView=NSHostingView(rootView:StudioSettingsView());w.center();settingsWindow=w}
         settingsWindow?.makeKeyAndOrderFront(nil);NSApp.activate(ignoringOtherApps:true)
     }
     @objc func showAbout(_ sender:Any?){NSApp.orderFrontStandardAboutPanel(nil)}

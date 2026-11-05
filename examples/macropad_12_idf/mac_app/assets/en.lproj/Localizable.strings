@@ -535,3 +535,15 @@
 "Yazdır ile seçili katmanın görevlerine kaydedilir" = "Write saves these settings with the selected layer’s actions";
 "Hedef uygulamada kısayol ataması gerekli" = "Shortcut setup required in the target app";
 "Aşağıdaki öneriler varsayılan kısayol değildir. Aynı görevleri hedef uygulamada bu tuşlara bağla; istersen görev bazında değiştirebilirsin." = "These suggestions are not default shortcuts. Assign them to the matching actions in the target app, or change each assignment.";
+
+"Cihaz bağlı değil" = "Device disconnected";
+"BLE klavye algılandı · sensör verisi yok" = "BLE keyboard detected · no sensor data";
+"CİHAZ GÖRÜLÜYOR" = "DEVICE DETECTED";
+"CİHAZ BAĞLI DEĞİL" = "DEVICE DISCONNECTED";
+"USB · sensör verisi geliyor" = "USB · sensor data live";
+"BLE · klavye algılandı" = "BLE · keyboard detected";
+"Cihaz bağlantısı bekleniyor" = "Waiting for device";
+"BLE üzerinden sensör verisi henüz desteklenmiyor" = "Sensor data over BLE is not yet supported";
+"Bluetooth ayarlarını aç" = "Open Bluetooth settings";
+"BLE modunda Layer + KEY 0 bağlantı türünü değiştirir. Layer + alt sıradaki tuşlar üç cihazı seçer." = "In BLE mode, Layer + KEY 0 changes transport. Layer + bottom-row keys select the three devices.";
+"BLE şu anda klavye ve medya çıkışı sağlar. Canlı sensör verisi ve uygulamadan ayar yazma için S3 USB bağlantısı gerekir." = "BLE currently supports keyboard and media output. Live sensor data and writing settings require the S3 USB connection.";

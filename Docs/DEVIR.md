@@ -99,3 +99,7 @@ GitHub ön sürümleri `c6/vX.Y.Z`, `s3/vX.Y.Z` ve `studio/vX.Y.Z` etiketlerini
 kullanır. Kod değişikliğinde ilgili bileşenin sürümünü artır, değişikliği ve
 kanıtını not et, test et ve yeni commit ile yayınla. Yayımlanmış etiketi veya
 release'i değiştirme. Başlangıç 0.1.0 ürünün bitmiş olduğunu göstermez.
+
+## Studio 0.1.1 bağlantı durumu
+
+Studio, `IOHIDDevice` sistem kayıtlarında ürün adı Wireless HE ve Bluetooth taşıması olan cihazı gözlemler; giriş olaylarını okumaz. Bu yalnızca macOS'un HID aygıtı gördüğünü belirtir, gerçek sensör akışını kanıtlamaz. Canlı sensör ve ayar yazma protokolü hâlâ S3 USB yolu üzerindedir. BLE aracılığıyla Studio yapılandırma ve telemetri GATT servisi ve istemcisi henüz yoktur.

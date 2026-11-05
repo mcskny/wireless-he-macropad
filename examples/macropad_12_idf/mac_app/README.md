@@ -1,3 +1,5 @@
+> **Studio 0.1.1:** Canlı test ve aydınlatmadaki 2B/3B modeller bağlantı durumunu gösterir. BLE klavye varlığı Mac'in HID aygıtları üzerinden algılanır; bu, sensör telemetrisi veya ayar yazma anlamına gelmez. BLE üzerinden canlı sensör, profil ve aydınlatma yapılandırması henüz uygulanmadı.
+
 > **Güncel durum — 5 Kasım 2026:** Bu dosyanın aşağıdaki tarihli test notları kendi dönemine aittir. Projenin güncel C6/S3, BLE, HID ve doğrulama durumu için [bütünleşik rehbere](../../../Docs/Proje_Rehberi.md) bakın.
 
 # Wireless HE Studio — macOS test uygulaması
