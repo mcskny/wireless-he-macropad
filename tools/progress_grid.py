@@ -25,7 +25,7 @@ white, mute = '#eff8f4', '#a9bab9'
 green, gold, gray = '#58df98', '#ffc768', '#8999a6'
 text(72, 52, 'WIRELESS HE', 30, mute, True)
 text(72, 97, 'Proje durum haritası', 53, white, True)
-text(74, 167, 'Her kare bir değerlendirme · 05 Kasım 2026', 23, mute)
+text(74, 167, 'Her kare bir değerlendirme · 06 Kasım 2026', 23, mute)
 text(1190, 79, f'~%{score}', 82, green, True)
 text(1195, 175, 'GENEL DURUM', 18, mute, True)
 d.rounded_rectangle((55, 235, 1545, 895), radius=25, fill='#15212a', outline='#354a50', width=2)

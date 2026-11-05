@@ -103,16 +103,22 @@ for group, changes in latest.items():
     groups[group] = [changes.get(label, (label, state)) for label, state in groups[group]]
 
 # 5 Nov: only user-confirmed BLE behaviour is marked tested.
+# 6 Kasım: yalnız kullanıcı tarafından doğrulanan akışlar yeşil.
 groups['BLUETOOTH LE'] = [
- ('BLE HID derleme','tested'), ('Layer + KEY 0 geçiş','tested'),
+ ('BLE HID / Mac','tested'), ('Layer + KEY 0 geçiş','tested'),
  ('ESP-NOW / BLE geçiş','tested'), ('Mac BLE eşleşme','tested'),
- ('Şifreli BLE bağlantı','tested'), ('Kalıcı bağ kaydı','partial'),
- ('BLE harf tuşu','tested'), ('BLE katman / RT / SOCD','partial'),
- ('Profil aktarım kontrolü','partial'), ('C6 profil kaydı','partial'),
- ('Kopunca tuş bırakma','missing'), ('Otomatik yeniden bağlanma','partial'),
- ('Mac fiziksel test','tested'), ('Diğer cihaz testleri','missing'),
- ('BLE gecikme ölçümü','missing'), ('BLE pil ölçümü','missing'),
+ ('Şifreli BLE bağlantı','tested'), ('Kalıcı BLE bağ kaydı','tested'),
+ ('BLE tuş atama / H','tested'), ('BLE RT / SOCD testi','missing'),
+ ('BLE ayar aktarımı','tested'), ('BLE profil kalıcılığı','tested'),
+ ('Modlara ayrı katman','tested'), ('3 cihaz arası geçiş','tested'),
+ ('BLE canlı aydınlatma','tested'), ('Ayrı ışık kalıcılığı','partial'),
+ ('BLE sensör akışı','missing'), ('Gecikme / pil ölçümü','missing'),
 ]
+
+
+# BLE'de sabit ışık kaydı ve katman yazımı doğrulandı; diğer yolların tamamı ayrı test gerektirir.
+groups['C6 GÖNDERİCİ'] = [('BLE LED kalıcı kaydı', 'tested') if label == 'LED ayarı kaydı' else (label, state) for label, state in groups['C6 GÖNDERİCİ']]
+groups['İLETİŞİM & YAPILANDIRMA'] = [('BLE kalıcı profil yazımı', 'partial') if label == 'Atomik kalıcı yazma' else (label, state) for label, state in groups['İLETİŞİM & YAPILANDIRMA']]
 
 def audit():
     s=SWIFT.read_text(); a=s.index('final class MacKeyOutput {'); b=s.index('\nfinal class StudioModel:',a)
@@ -163,7 +169,7 @@ partial_count = states.count("partial")
 estimated_progress = 100 * (tested_count + 0.5 * partial_count) / len(states)
 t(38,25,"WIRELESS HE  /  PROJE İLERLEME HARİTASI",39,white,True)
 t(2080,27,f"GENEL TAHMİN  %{estimated_progress:.0f}",26,green,True)
-t(40,76,"Donanım · test platformu · macOS · aydınlatma · firmware · profiller  /  05 Kasım 2026",19,muted)
+t(40,76,"Donanım · test platformu · macOS · aydınlatma · firmware · profiller  /  06 Kasım 2026",19,muted)
 for x,col,label in [(1460,green,"Tamamlandı / denendi"),(1735,yellow,"Kod / taslak · test eksik"),(2250,grey,"Eksik")]:
     d.rectangle((x,78,x+18,96),fill=col);t(x+27,75,label,18)
 states=[state for items in groups.values() for _,state in items]
@@ -199,11 +205,11 @@ t(x+15,y+311,f"{supported} hazır · {setup} hedefte atama gerekli · test deği
 x=38;y=1599
 box(x,y,2521,335)
 t(x+20,y+15,"ÖNCELİKLİ EKSİKLER",23,white,True)
-notes=[("01","BLE yeniden bağlanma ve bağlantı güvenliği"),("02","1 kHz kablosuz aktarım ve paket kaybı"),("03","Duty cycle: voltaj, ters besleme ve akım ölçümü"),("04","Encoder, analog gamepad ve pil testi")]
+notes=[("01","BLE dayanıklılık, RT / SOCD ve canlı sensör akışı"),("02","1 kHz kablosuz aktarım ve paket kaybı"),("03","Duty cycle: voltaj, ters besleme ve akım ölçümü"),("04","Encoder, analog gamepad ve pil testi")]
 for i,(n,label) in enumerate(notes):
     yy=y+56+i*49
     t(x+20,yy,n,19,yellow,True);t(x+65,yy,label,19,white,True)
-t(x+20,y+271,"Harf / ses HID ve kalıcı kayıt denendi; gerçek güç tasarrufu henüz ölçülmedi.",16,muted)
+t(x+20,y+271,"BLE ve ESP-NOW katman ayrımı denendi; ışık kalıcılığı ve güç tüketimi ölçülmeli.",16,muted)
 t(38,1995,"Genel tahmin: yeşil 1, sarı 0,5, gri 0 puan; durum kareleri eşit ağırlıklıdır, gerçek proje tamamlanma ölçümü değildir.",17,muted)
 t(38,2023,"Yeşil profil karesi kod karşılığını gösterir; gerçek uygulama testi anlamına gelmez.",17,muted)
 OUT.parent.mkdir(parents=True,exist_ok=True);im.save(OUT,optimize=True)

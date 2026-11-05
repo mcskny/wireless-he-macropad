@@ -12,14 +12,14 @@ translations=[
 ('MAC INPUT','Keyboard output|Two-stage key|Media and volume|macOS shortcuts|App-specific actions|Native analog gamepad|Automatic profile switching|Physical encoder input|Letter key assignment|Modifier shortcuts|Accessibility permission|Key-release protection|Spotify shortcuts|Discord shortcuts|Rapid Trigger output|Write actions to device'),
 ('GAMES & ANALOG','Assetto steering|Assetto throttle / brake|CrossOver bridge|ETS2 in-game test|Flight Simulator test|Farming Simulator test|Analog response curves|All-combinations test|Steer left|Steer right|Throttle axis|Brake axis|Four-key calibration|Game deadzone|Native Mac gamepad|In-game latency measurement'),
 ('LIGHTING','2D / 3D preview|Static / breathing|Wave / rainbow|Sweep / snake|Starlight / reactive|Live color / effect|C6 live LED engine|12 physical LEDs lit|Off|Static|Breathing|Wave|Rainbow|Sweep|Starlight|Snake'),
-('C6 TRANSMITTER','C6 1 kHz scan test|C6 wireless transmit|Encoder / power code|Battery reading|C6 sensor hardware test|D7 layer switch|C6 LED engine|Wireless security|MCP3202 selection|12-channel scan|5 / 23-byte frame|Power mode code|Store LED settings|Physical layer LEDs|Pairing verification|Packet encryption'),
+('C6 TRANSMITTER','C6 1 kHz scan test|C6 wireless transmit|Encoder / power code|Battery reading|C6 sensor hardware test|D7 layer switch|C6 LED engine|Wireless security|MCP3202 selection|12-channel scan|5 / 23-byte frame|Power mode code|BLE LED settings saved|Physical layer LEDs|Pairing verification|Packet encryption'),
 ('S3 RECEIVER & CONFIG','S3 wireless sensor RX|USB keyboard 6KRO|USB media / gamepad|Hall processing|NKRO|Mac to C6 live lighting|ACK / readback|C6 to S3 to Mac stream|Single-key HID test|Consumer HID report|Gamepad HID report|Connection watchdog|USB lighting settings|Versioned NVS storage|Device identity / capabilities|Settings readback test'),
 ('CALIBRATION & MEASUREMENT','Released ADC capture|Fully pressed ADC capture|12-key calibration|Percentage calculation|Reverse polarity sensor|ADC min / max|ADC endpoint warning|Approximate 3D depth|Calibration persistence|12-key wizard|Physical travel in mm|Magnetic field in mT|Saturation detection|Noise profile|Nonlinear response curve|Cross-channel effects'),
 ('LAYERS, HALL & ACTIONS','Four layer drafts|Layer preview|Single key assignment|Second actuation stage|Actuation threshold|Hysteresis|Rapid Trigger settings|Layer SOCD settings|Custom profile storage|Encoder assignment|Hold layer + encoder|Physical layer LED|Two-way layer state|Physical Rapid Trigger test|Physical SOCD test|Encoder HID integration'),
-('COMMUNICATION & CONFIG','12 ADC serial frame|Serial server status|Channel remapping|Sample sequence number|Sequence gap logging|Version / CRC frame|ESP-NOW sensor TX|ESP-NOW sensor RX|Four-layer live lighting|Device identification|Mac to S3 lighting|S3 to C6 lighting|Config transaction confirmation|Device readback|Atomic persistent writes|Secure pairing'),
+('COMMUNICATION & CONFIG','12 ADC serial frame|Serial server status|Channel remapping|Sample sequence number|Sequence gap logging|Version / CRC frame|ESP-NOW sensor TX|ESP-NOW sensor RX|Four-layer live lighting|Device identification|Mac to S3 lighting|S3 to C6 lighting|Config transaction confirmation|Device readback|BLE persistent profile write|Secure pairing'),
 ('TEST & RELIABILITY','Assetto axis test|Assetto gameplay test|Four-key calibration|Live serial stream|HID unit tests|Encoder unit tests|Protocol unit tests|Profile mapping|12-key sensor stream|Long-duration stream|Noise / drift|Power consumption|Wireless loss measurement|HID timeout unit test|C6 sensor test board|S3 USB serial on Mac'),
 ('POWER & DUTY CYCLE','MOSFET gate control|100 Hz idle scan|10 Hz idle transmission|Wake on movement|1 kHz active target|Idle after 2 s|Startup delay|Threshold / hysteresis|Power policy unit tests|Sensor supply measurement|MOSFET circuit test|Backfeed measurement|Wake latency|Noise / wake threshold|Total current measurement|Battery life measurement'),
-('BLUETOOTH LE','BLE HID build|Layer + KEY 0 switch|ESP-NOW / BLE switching|Mac BLE pairing|Encrypted BLE link|Bond persistence|BLE keyboard output|BLE layers / RT / SOCD|Profile transfer validation|C6 profile storage|Release on disconnect|Automatic reconnect|Mac hardware test|Other host tests|Latency measurement|BLE battery test'),
+('BLUETOOTH LE','BLE HID / Mac|Layer + KEY 0 switch|ESP-NOW / BLE switching|Mac BLE pairing|Encrypted BLE link|Bond persistence|BLE key assignment / H|BLE RT / SOCD test|BLE configuration transfer|BLE profile persistence|Separate transport layers|Three-host switching|BLE live lighting|Separate lighting persistence|BLE sensor stream|Latency / battery measurement'),
 ]
 translations = [(name, labels.replace('Keyboard output|', 'Letter HID output|').replace('Media / audio|', 'Volume HID output|').replace('Write actions to device', 'Write S3 actions').replace('Consumer HID report', 'Volume HID report').replace('Versioned NVS storage', 'Persistent HID settings').replace('Settings readback test', 'Settings restart test').replace('Single key assignment', 'Layered key assignment').replace('Device readback', 'S3 profile readback').replace('Startup delay', '600 µs startup delay').replace('Noise / wake threshold', 'Commanded gate on-time').replace('Profile mapping', 'H / J layer test')) for name, labels in translations]
 groups=[]
@@ -43,7 +43,7 @@ def wrap(d,text,w,n=17):
 out=root/'Docs/progress';out.mkdir(parents=True,exist_ok=True)
 im=Image.new('RGB',(2600,2085),'#080d12');d=ImageDraw.Draw(im)
 title(d,(38,25),'WIRELESS HE  /  PROJECT PROGRESS MAP',39,b=True)
-title(d,(40,80),'Hardware · sensor platform · macOS · firmware · power · 05 Nov 2026',20,'#becbd0')
+title(d,(40,80),'Hardware · sensor platform · macOS · firmware · power · 06 Nov 2026',20,'#becbd0')
 title(d,(1960,126),f'OVERALL  ~{score}%',25,colors['tested'],True)
 title(d,(38,128),f'PROJECT FEATURES  /  {len(states)} STATUS TILES',24,b=True)
 title(d,(40,164),'Estimate: tested = 1, partial = 0.5, missing = 0; tiles are equally weighted and can overlap.',18,'#becbd0')
@@ -63,15 +63,15 @@ for i,(key,label) in enumerate([('tested','Complete / tested'),('partial','Imple
  yy=y+60+i*60;d.rectangle((x+20,yy,x+41,yy+21),fill=colors[key]);title(d,(x+58,yy),f'{label}: {states.count(key)}',18)
 title(d,(x+20,y+277),'The score is a rough checklist index, not a product-completion metric.',15,'#becbd0')
 x,y=38,1599;d.rounded_rectangle((x,y,x+2521,y+335),6,fill='#17222c',outline='#455966');title(d,(x+20,y+15),'CURRENT PRIORITIES',23,b=True)
-for i,t in enumerate(['BLE reconnect and connection security','Wireless throughput, reliability and secure pairing','MOSFET rail, backfeed and current measurements','Physical encoder, gamepad and battery tests']):title(d,(x+25,y+62+i*47),f'{i+1:02}   {t}',20)
-title(d,(x+20,y+270),'Layered HID, SOCD and Rapid Trigger tested; power savings are unmeasured.',16,'#becbd0')
+for i,t in enumerate(['BLE stability, RT / SOCD and sensor stream','Wireless throughput, reliability and secure pairing','MOSFET rail, backfeed and current measurements','Physical encoder, gamepad and battery tests']):title(d,(x+25,y+62+i*47),f'{i+1:02}   {t}',20)
+title(d,(x+20,y+270),'Separate BLE / ESP-NOW key assignments tested; power savings unmeasured.',16,'#becbd0')
 title(d,(38,1990),'Status reflects evidence from the test platform and code review. It does not guarantee product readiness.',18,'#becbd0')
 im.save(out/'project-progress-en.png',optimize=True)
 # Compact sorted grid and numbered explanatory list.
 entries=[(g,n,s) for g,items in groups for n,s in items];entries.sort(key=lambda x:{'tested':0,'partial':1,'missing':2}[x[2]])
 im=Image.new('RGB',(1600,3650),'#0b1118');d=ImageDraw.Draw(im)
 title(d,(72,50),'WIRELESS HE',30,'#a9bab9',True);title(d,(72,95),'Project progress overview',53,b=True)
-title(d,(74,167),'One square per review item · 05 Nov 2026',23,'#a9bab9');title(d,(1190,78),f'~{score}%',82,colors['tested'],True)
+title(d,(74,167),'One square per review item · 06 Nov 2026',23,'#a9bab9');title(d,(1190,78),f'~{score}%',82,colors['tested'],True)
 d.rounded_rectangle((55,235,1545,895),25,fill='#15212a',outline='#354a50',width=2)
 for i,(_,_,state) in enumerate(entries):
  x=294+(i%20)*51;y=270+(i//20)*51;d.rounded_rectangle((x,y,x+43,y+43),5,fill=colors[state])
