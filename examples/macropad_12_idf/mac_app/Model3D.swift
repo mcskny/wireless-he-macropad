@@ -277,7 +277,7 @@ struct MacropadModelView:NSViewRepresentable {
             for led in coordinator.leds {led.isHidden = model.page == "Özellikler"}
             coordinator.depths.removeAll();coordinator.explodedStage=stage
         }
-        let highlights:Set<Int> = model.page == "Özellikler" ? [] : (model.page == "Aydınlatma" ? Set(coordinator.keys.keys.filter{model.lightingKeyHighlighted($0)}) : [model.selected])
+        let highlights:Set<Int> = ["Özellikler","Canlı test"].contains(model.page) ? [] : (model.page == "Aydınlatma" ? Set(coordinator.keys.keys.filter{model.lightingKeyHighlighted($0)}) : [model.selected])
         for (i,node) in coordinator.keys {
             let amount=stage == 0 ? CGFloat(model.displayedPercent(i)/100)*0.0032 : (stage == 1 ? -0.035 : (stage == 2 ? -0.075 : -0.095))
             if coordinator.depths[i] != amount, let origin=coordinator.positions[i] { node.position=SCNVector3(origin.x,origin.y,origin.z-amount);coordinator.depths[i]=amount }

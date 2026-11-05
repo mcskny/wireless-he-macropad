@@ -572,3 +572,5 @@
 
 "Bu özellik BLE bağlantısında kullanılamıyor. ESP-NOW / S3 bağlantısına geç." = "This feature is unavailable over BLE. Switch to ESP-NOW / S3.";
 "Encoder görevleri BLE üzerinden kullanılamıyor." = "Encoder actions are unavailable over BLE.";
+
+"Gelişmiş özellikler" = "Advanced features";

@@ -5,6 +5,12 @@ Versions are independent. Tags are `c6/vX.Y.Z`, `s3/vX.Y.Z`, and
 prototype; source commits preserve changes between releases. A version is never
 reused or overwritten after publication.
 
+## Studio 0.1.7 — 2026-11-06 (experimental pre-release)
+
+- Collapses calibration, channel diagnostics and sensor tools behind Advanced features in Live test.
+- Removes key legends and persistent selected-key highlighting from the Live test 2D and 3D previews. Other screens retain their selection indicators.
+- Build verified; interactive appearance has not yet been confirmed.
+
 ## Studio 0.1.6 — 2026-11-06 (experimental pre-release)
 
 - Hides live press and signal history panels in BLE mode; they remain available over ESP-NOW / S3.
