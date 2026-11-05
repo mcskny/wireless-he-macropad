@@ -85,7 +85,8 @@ static bool lighting_sample_ready;
 static light_profile_t synced_profiles[4];static bool synced_valid;static uint8_t lighting_layer;
 static uint32_t layer_press_count;
 static bool layer_held, transition_animation;
-static int64_t pairing_animation_us;
+static int64_t pairing_animation_us,slot_animation_us;
+static uint8_t slot_animation_index;
 static int64_t transition_requested_us;
 static whe_transport_t transition_target;
 static uint64_t lighting_host_ms;static int64_t lighting_host_received_us;
@@ -222,8 +223,8 @@ static void led_test_task(void *arg) {
     whe_disconnected_warning_t warning={0};uint32_t last_layer_press_count=0;
     for (;;) {
         int64_t local_us=esp_timer_get_time();uint64_t now=(uint64_t)local_us/1000;
-        light_profile_t selected;bool valid;uint8_t layer;uint64_t host_ms;int64_t host_received,receiver_seen;uint32_t layer_presses;bool held,transition_show;int64_t transition_start,pair_start;whe_transport_t target;
-        portENTER_CRITICAL(&send_mux);valid=synced_valid;layer=lighting_layer;selected=synced_profiles[layer];host_ms=lighting_host_ms;host_received=lighting_host_received_us;receiver_seen=reported_app_at_us;layer_presses=layer_press_count;held=layer_held;transition_show=transition_animation;transition_start=transition_requested_us;target=transition_target;pair_start=pairing_animation_us;portEXIT_CRITICAL(&send_mux);
+        light_profile_t selected;bool valid;uint8_t layer;uint64_t host_ms;int64_t host_received,receiver_seen;uint32_t layer_presses;bool held,transition_show;int64_t transition_start,pair_start,slot_start;uint8_t slot_index;whe_transport_t target;
+        portENTER_CRITICAL(&send_mux);valid=synced_valid;layer=lighting_layer;selected=synced_profiles[layer];host_ms=lighting_host_ms;host_received=lighting_host_received_us;receiver_seen=reported_app_at_us;layer_presses=layer_press_count;held=layer_held;transition_show=transition_animation;transition_start=transition_requested_us;target=transition_target;pair_start=pairing_animation_us;slot_start=slot_animation_us;slot_index=slot_animation_index;portEXIT_CRITICAL(&send_mux);
         bool new_press=layer_presses!=last_layer_press_count;last_layer_press_count=layer_presses;
         if(valid){if(memcmp(&engine.profile,&selected,sizeof(selected))){light_engine_set_profile(&engine,&selected);printf("LIGHT applied layer=%u effect=%u rgb=%u,%u,%u brightness=%u speed=%u flags=%u\n",(unsigned)(layer+1),(unsigned)selected.effect,(unsigned)selected.r,(unsigned)selected.g,(unsigned)selected.b,(unsigned)selected.brightness,(unsigned)selected.speed,(unsigned)selected.flags);}if(local_us>=host_received)now=host_ms+(uint64_t)(local_us-host_received)/1000;}
         uint16_t raw[12],base[12];bool ready;
@@ -263,6 +264,15 @@ static void led_test_task(void *arg) {
             unsigned level=(unsigned)(ramp*100/300000);
             for(unsigned i=0;i<12;i++)colors[i]=(light_rgb_t){.r=0,.g=level*20/100,.b=level};
         }
+        // Selection confirmation stays visible while the BLE host reconnects.
+        int64_t slot_elapsed=local_us-slot_start;
+        if(slot_start>0 && slot_elapsed>=0 && slot_elapsed<900000){
+            int64_t phase=slot_elapsed%450000;
+            int64_t ramp=phase<225000?phase:450000-phase;
+            unsigned t=(unsigned)(ramp*1000/225000);
+            unsigned level=(unsigned)((uint64_t)t*t*(3000-2*t)*100/1000000000ULL);
+            for(unsigned i=0;i<12;i++)colors[i]=(light_rgb_t){.r=0,.g=(i/4==slot_index)?level*20/100:0,.b=(i/4==slot_index)?level:0};
+        }
         // Mode change always overrides the other effects.
         int64_t elapsed=local_us-transition_start;
         if(transition_show){
@@ -276,7 +286,7 @@ static void led_test_task(void *arg) {
         for(int i=0;i<12;i++)neopixel_set_pixel(light_to_led[i],colors[i].r,colors[i].g,colors[i].b);
         esp_err_t e = neopixel_refresh();
         if (e != ESP_OK) printf("LED refresh failed: %s\n", esp_err_to_name(e));
-        vTaskDelay(pdMS_TO_TICKS((transition_show || warning_active || (pair_start>0 && pairing_elapsed<1200000))?16:33));
+        vTaskDelay(pdMS_TO_TICKS((transition_show || warning_active || (pair_start>0 && pairing_elapsed<1200000) || (slot_start>0 && slot_elapsed<900000))?16:33));
     }
 }
 static void radio_init(void) {
@@ -404,6 +414,7 @@ void app_main(void) {
             int chosen=whe_ble_slot_chord_step(&slot_chord,button_stable,held_mask);
             if(chosen>=0 && !switch_pending){
                 slot_consumed|=1u<<chosen;transport.chord_used=true;pairing_cancelled=true;
+                portENTER_CRITICAL(&send_mux);slot_animation_us=scan_started;slot_animation_index=(uint8_t)chosen;portEXIT_CRITICAL(&send_mux);
                 esp_err_t e=whe_ble_select_slot((unsigned)chosen);if(e!=ESP_OK)printf("BLE slot error: %s\n",esp_err_to_name(e));
             }
         }

@@ -68,6 +68,7 @@ static int gap_event(struct ble_gap_event *event,void *arg){
    int rc=ble_gap_security_initiate(connection);if(rc)ESP_LOGW(TAG,"security request %d",rc);}
   else advertise();
  }else if(event->type==BLE_GAP_EVENT_ENC_CHANGE){
+  if(event->enc_change.conn_handle!=connection){ESP_LOGW(TAG,"ignoring stale encryption event");return 0;}
   ESP_LOGI(TAG,"encryption status=%d",event->enc_change.status);
   struct ble_gap_conn_desc desc;
   bool ok=event->enc_change.status==0 && ble_gap_conn_find(event->enc_change.conn_handle,&desc)==0 && desc.sec_state.encrypted && desc.sec_state.bonded;
@@ -84,7 +85,9 @@ static int gap_event(struct ble_gap_event *event,void *arg){
   }
   encrypted=ok;
   if(!ok && connection!=BLE_HS_CONN_HANDLE_NONE)ble_gap_terminate(connection,BLE_ERR_REM_USER_CONN_TERM);
- }else if(event->type==BLE_GAP_EVENT_DISCONNECT){ESP_LOGW(TAG,"disconnected reason=%d",event->disconnect.reason);connection=BLE_HS_CONN_HANDLE_NONE;encrypted=false;advertise();}
+ }else if(event->type==BLE_GAP_EVENT_DISCONNECT){
+  if(event->disconnect.conn.conn_handle!=connection){ESP_LOGW(TAG,"ignoring stale disconnect");return 0;}
+  ESP_LOGW(TAG,"disconnected reason=%d",event->disconnect.reason);connection=BLE_HS_CONN_HANDLE_NONE;encrypted=false;advertise();}
  else if(event->type==BLE_GAP_EVENT_ADV_COMPLETE)advertise();
  return 0;
 }

@@ -5,6 +5,13 @@ Versions are independent. Tags are `c6/vX.Y.Z`, `s3/vX.Y.Z`, and
 prototype; source commits preserve changes between releases. A version is never
 reused or overwritten after publication.
 
+## C6 0.1.2 — 2026-11-05 (experimental pre-release)
+
+- Adds a two-pulse blue column indicator when selecting a BLE device slot.
+- Ignores stale disconnect and encryption events belonging to old handles.
+- Build passed; connection timeout was still observed in a short capture. This
+  is not a verified fix for intermittent connection or three-host switching.
+
 ## C6 0.1.1 — 2026-11-05 (experimental pre-release)
 
 - Adds three BLE host slots: hold Layer and press the left, middle, or right
