@@ -108,11 +108,11 @@ groups['BLUETOOTH LE'] = [
  ('BLE HID / Mac','tested'), ('Layer + KEY 0 geçiş','tested'),
  ('ESP-NOW / BLE geçiş','tested'), ('Mac BLE eşleşme','tested'),
  ('Şifreli BLE bağlantı','tested'), ('Kalıcı BLE bağ kaydı','tested'),
- ('BLE tuş atama / H','tested'), ('BLE RT / SOCD testi','missing'),
+ ('BLE tuş atama / H','tested'), ('BLE RT / SOCD testi','tested'),
  ('BLE ayar aktarımı','tested'), ('BLE profil kalıcılığı','tested'),
  ('Modlara ayrı katman','tested'), ('3 cihaz arası geçiş','tested'),
- ('BLE canlı aydınlatma','tested'), ('Ayrı ışık kalıcılığı','partial'),
- ('BLE sensör akışı','missing'), ('Gecikme / pil ölçümü','missing'),
+ ('BLE canlı aydınlatma','tested'), ('Ayrı ışık kalıcılığı','tested'),
+ ('BLE katman seçimi','tested'), ('Gecikme / pil ölçümü','missing'),
 ]
 
 
@@ -205,7 +205,7 @@ t(x+15,y+311,f"{supported} hazır · {setup} hedefte atama gerekli · test deği
 x=38;y=1599
 box(x,y,2521,335)
 t(x+20,y+15,"ÖNCELİKLİ EKSİKLER",23,white,True)
-notes=[("01","BLE dayanıklılık, RT / SOCD ve canlı sensör akışı"),("02","1 kHz kablosuz aktarım ve paket kaybı"),("03","Duty cycle: voltaj, ters besleme ve akım ölçümü"),("04","Encoder, analog gamepad ve pil testi")]
+notes=[("01","BLE uzun süreli bağlantı ve kararlılık testi"),("02","1 kHz kablosuz aktarım ve paket kaybı"),("03","Duty cycle: voltaj, ters besleme ve akım ölçümü"),("04","Encoder, analog gamepad ve pil testi")]
 for i,(n,label) in enumerate(notes):
     yy=y+56+i*49
     t(x+20,yy,n,19,yellow,True);t(x+65,yy,label,19,white,True)
