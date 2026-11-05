@@ -67,6 +67,16 @@ proje yollarını yazar. Bu nedenle üretilen uygulama başka Mac'e otomatik
 kurulabilir sayılmaz. Kullanıcının açık uygulamasını kapatmadan veya yerel
 verilerini silmeden çalış; ayarlar ve kullanıcı profillerini koru.
 
+## C6 0.1.1 Easy Switch denemesi
+
+Layer + en alt sol/orta/sağ tuşlar BLE yuvası 1/2/3 için kodlandı ve derlendi.
+Boş yuva seçilince eşleştirme penceresi açılır. Daha önce tek bir BLE bağı varsa
+ilk yuvaya taşınması hedeflenir; bonding verileri silinmez. Kartta sürüm yüklü,
+bir kez şifreli bağlantı gözlendi; üç cihaz arasında fiziksel geçiş, bağlantı
+kararlılığı ve NVS sonrası yeniden başlatma henüz test edilmedi. Slot kodu
+`c6/main/ble_transport.c`, kombinasyon `shared/ble_slots.h` ve
+`tests/test_ble_slots.c` dosyalarındadır.
+
 ## Öncelikli sonraki testler
 
 1. Tüm tuşlar serbestken C6'yı yeniden başlat. Mevcut BLE eşleşmesi korunuyor

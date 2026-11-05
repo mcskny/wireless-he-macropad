@@ -5,6 +5,17 @@ Versions are independent. Tags are `c6/vX.Y.Z`, `s3/vX.Y.Z`, and
 prototype; source commits preserve changes between releases. A version is never
 reused or overwritten after publication.
 
+## C6 0.1.1 — 2026-11-05 (experimental pre-release)
+
+- Adds three BLE host slots: hold Layer and press the left, middle, or right
+  bottom-row Hall key. Empty slots open a pairing window; existing bonds are
+  retained and a single existing bond is migrated to slot 1.
+- Connection diagnostics now include disconnect reasons. The device resumed an
+  encrypted link after flashing in one observation; this is not a reliability
+  result. Three-device switching, reconnect, simultaneous keys and release on
+  disconnect have not been physically validated.
+- Unit tests cover chord selection, not the Bluetooth stack or host behavior.
+
 ## C6 0.1.0 — 2026-11-05 (pre-release)
 
 - 12-channel sensor scanning, ESP-NOW and direct BLE HID, RGB effects, power

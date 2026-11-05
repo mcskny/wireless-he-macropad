@@ -26,6 +26,7 @@
 #include "disconnected_warning.h"
 #include "ble_transport.h"
 #include "transport_mode.h"
+#include "ble_slots.h"
 #include "ble_profile_wire.h"
 #include "nvs.h"
 #include "esp_system.h"
@@ -337,6 +338,7 @@ void app_main(void) {
     whe_hid_engine_t ble_engine;whe_hid_reset(&ble_engine);
     uint8_t ble_layer=255;bool ble_connected=false,ble_armed=false;
     whe_hid_report_t previous_ble={0};bool ble_sent=false;int64_t next_ble=0;
+    whe_ble_slot_chord_t slot_chord={0};bool slot_stable[3]={0},slot_candidate[3]={0};int64_t slot_changed[3]={0};uint8_t slot_consumed=0;
     bool pairing_cancelled=false,pairing_fired=false,pairing_candidate=false;int64_t pairing_down_us=0,pairing_candidate_us=0;
     bool switch_pending=false,mode_key=false,mode_candidate=false;int64_t mode_candidate_since=0;whe_transport_t switch_target=WHE_TRANSPORT_ESPNOW;
     int64_t released_since=0;
@@ -390,6 +392,21 @@ void app_main(void) {
                 }
             }
         }
+        if(transport.mode==WHE_TRANSPORT_BLE){
+            uint8_t held_mask=0;
+            for(unsigned i=0;i<3;i++){
+                unsigned ch=whe_ble_slot_channels[i];int d=abs((int)readings[ch]-(int)policy.baseline[ch]);
+                bool v=policy.initialized && d>(slot_stable[i]?80:120);
+                if(v!=slot_candidate[i]){slot_candidate[i]=v;slot_changed[i]=scan_started;}
+                if(v!=slot_stable[i] && scan_started-slot_changed[i]>=20000)slot_stable[i]=v;
+                if(slot_stable[i])held_mask|=1u<<i;else slot_consumed&=(uint8_t)~(1u<<i);
+            }
+            int chosen=whe_ble_slot_chord_step(&slot_chord,button_stable,held_mask);
+            if(chosen>=0 && !switch_pending){
+                slot_consumed|=1u<<chosen;transport.chord_used=true;pairing_cancelled=true;
+                esp_err_t e=whe_ble_select_slot((unsigned)chosen);if(e!=ESP_OK)printf("BLE slot error: %s\n",esp_err_to_name(e));
+            }
+        }
         whe_transport_action_t action=whe_transport_input(&transport,button_stable,mode_key);
         if(action.layer_tap && !switch_pending){layer=(layer+1u)%4u;button_event=true;portENTER_CRITICAL(&send_mux);lighting_layer=layer;++layer_press_count;portEXIT_CRITICAL(&send_mux);}
         if(action.switch_requested && !switch_pending){
@@ -397,8 +414,8 @@ void app_main(void) {
             else printf("BLE switch refused: save a profile through S3 first\n");
         }
         uint16_t output_readings[12];memcpy(output_readings,readings,sizeof(readings));
-        if(button_stable||action.suppress_key||switch_pending){
-            for(unsigned i=0;i<12;i++)if(switch_pending||i==MODE_KEY_ADC){
+        if(button_stable||action.suppress_key||switch_pending||slot_consumed){
+            for(unsigned i=0;i<12;i++)if(switch_pending||(i==MODE_KEY_ADC && (button_stable||action.suppress_key)) || ((button_stable || slot_consumed) && ((i==whe_ble_slot_channels[0] && (button_stable || (slot_consumed&1))) || (i==whe_ble_slot_channels[1] && (button_stable || (slot_consumed&2))) || (i==whe_ble_slot_channels[2] && (button_stable || (slot_consumed&4)))))){
                 const uint8_t *record=local_profile+(layer*12+i)*WHE_PROFILE_RECORD_SIZE;
                 output_readings[i]=local_profile_valid&&record[4]?whe_get16(record):policy.baseline[i];
             }

@@ -8,3 +8,6 @@ esp_err_t whe_ble_keyboard(uint8_t modifiers,const uint8_t keys[6]);
 esp_err_t whe_ble_consumer(uint16_t usage);
 
 void whe_ble_pairing_start(void);
+
+/* Select a saved BLE host slot; an empty slot opens the pairing window. */
+esp_err_t whe_ble_select_slot(unsigned slot);

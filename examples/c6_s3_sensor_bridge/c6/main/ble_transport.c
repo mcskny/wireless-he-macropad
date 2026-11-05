@@ -8,6 +8,7 @@
 #include "esp_hidd.h"
 #include "esp_log.h"
 #include "nvs_flash.h"
+#include "nvs.h"
 #include "host/ble_gap.h"
 #include "services/gap/ble_svc_gap.h"
 #include "host/ble_hs.h"
@@ -22,6 +23,13 @@ static atomic_bool encrypted;
 static uint8_t own_addr_type;
 static atomic_llong pairing_until;
 static esp_timer_handle_t pairing_timer;
+static nvs_handle_t slot_nvs;
+static uint8_t selected_slot;
+typedef struct {uint8_t valid;ble_addr_t addr;} saved_slot_t;
+static saved_slot_t slots[3];
+static bool addr_equal(const ble_addr_t *a,const ble_addr_t *b){return a->type==b->type && memcmp(a->val,b->val,6)==0;}
+static esp_err_t save_slots(void){esp_err_t e=nvs_set_blob(slot_nvs,"slots",slots,sizeof(slots));return e==ESP_OK?nvs_commit(slot_nvs):e;}
+
 
 // HID report IDs 1=6KRO keyboard, 2=consumer usage (16 bits).
 static const uint8_t report_map[]={
@@ -62,8 +70,21 @@ static int gap_event(struct ble_gap_event *event,void *arg){
  }else if(event->type==BLE_GAP_EVENT_ENC_CHANGE){
   ESP_LOGI(TAG,"encryption status=%d",event->enc_change.status);
   struct ble_gap_conn_desc desc;
-  encrypted=event->enc_change.status==0 && ble_gap_conn_find(event->enc_change.conn_handle,&desc)==0 && desc.sec_state.encrypted;
- }else if(event->type==BLE_GAP_EVENT_DISCONNECT){connection=BLE_HS_CONN_HANDLE_NONE;encrypted=false;advertise();}
+  bool ok=event->enc_change.status==0 && ble_gap_conn_find(event->enc_change.conn_handle,&desc)==0 && desc.sec_state.encrypted && desc.sec_state.bonded;
+  if(ok){
+   unsigned slot=selected_slot;
+   if(slots[slot].valid && !addr_equal(&slots[slot].addr,&desc.peer_id_addr)){ESP_LOGW(TAG,"host is not selected slot");ok=false;}
+   else if(!slots[slot].valid){
+    if(esp_timer_get_time()>=atomic_load(&pairing_until)){ESP_LOGW(TAG,"empty slot requires pairing window");ok=false;}
+    else {for(unsigned i=0;i<3;i++)if(i!=slot && slots[i].valid && addr_equal(&slots[i].addr,&desc.peer_id_addr)){ok=false;break;}
+     if(!ok){ble_gap_terminate(connection,BLE_ERR_REM_USER_CONN_TERM);encrypted=false;return 0;}
+     slots[slot].valid=1;slots[slot].addr=desc.peer_id_addr;
+     if(save_slots()!=ESP_OK){slots[slot].valid=0;ok=false;}else ESP_LOGI(TAG,"saved host in slot %u",slot+1);}
+   }
+  }
+  encrypted=ok;
+  if(!ok && connection!=BLE_HS_CONN_HANDLE_NONE)ble_gap_terminate(connection,BLE_ERR_REM_USER_CONN_TERM);
+ }else if(event->type==BLE_GAP_EVENT_DISCONNECT){ESP_LOGW(TAG,"disconnected reason=%d",event->disconnect.reason);connection=BLE_HS_CONN_HANDLE_NONE;encrypted=false;advertise();}
  else if(event->type==BLE_GAP_EVENT_ADV_COMPLETE)advertise();
  return 0;
 }
@@ -84,7 +105,13 @@ static void advertise(void){
 }
 static void hid_event(void *arg,esp_event_base_t base,int32_t id,void *data){
  (void)arg;(void)base;(void)data;
- if(id==ESP_HIDD_START_EVENT){int rc=ble_hs_id_infer_auto(0,&own_addr_type);if(!rc)advertise();else ESP_LOGE(TAG,"address %d",rc);}
+ if(id==ESP_HIDD_START_EVENT){
+  if(!slots[0].valid && !slots[1].valid && !slots[2].valid){
+   ble_addr_t peers[3];int count=0;
+   if(ble_store_util_bonded_peers(peers,&count,3)==0 && count==1){slots[0].valid=1;slots[0].addr=peers[0];if(save_slots()!=ESP_OK)slots[0].valid=0;else ESP_LOGI(TAG,"existing bond assigned to slot 1");}
+  }
+  int rc=ble_hs_id_infer_auto(0,&own_addr_type);if(!rc)advertise();else ESP_LOGE(TAG,"address %d",rc);
+ }
 }
 static void host_task(void *arg){(void)arg;nimble_port_run();nimble_port_freertos_deinit();}
 void ble_store_config_init(void);
@@ -101,6 +128,9 @@ void whe_ble_start(void){
  ble_hs_cfg.sm_our_key_dist=BLE_SM_PAIR_KEY_DIST_ID|BLE_SM_PAIR_KEY_DIST_ENC;
  ble_hs_cfg.sm_their_key_dist=BLE_SM_PAIR_KEY_DIST_ID|BLE_SM_PAIR_KEY_DIST_ENC;
  ble_store_config_init();ble_hs_cfg.store_status_cb=ble_store_util_status_rr;
+ ESP_ERROR_CHECK(nvs_open("whe_ble_slots",NVS_READWRITE,&slot_nvs));
+ size_t n=sizeof(slots);if(nvs_get_blob(slot_nvs,"slots",slots,&n)!=ESP_OK || n!=sizeof(slots))memset(slots,0,sizeof(slots));
+ if(nvs_get_u8(slot_nvs,"selected",&selected_slot)!=ESP_OK || selected_slot>=3)selected_slot=0;
  ESP_ERROR_CHECK(esp_hidd_dev_init(&config,ESP_HID_TRANSPORT_BLE,hid_event,&device));
  if(ble_svc_gap_device_name_set("Wireless HE")!=0) abort();
  nimble_port_freertos_init(host_task);
@@ -121,4 +151,17 @@ void whe_ble_pairing_start(void){
  if(connection!=BLE_HS_CONN_HANDLE_NONE){int rc=ble_gap_terminate(connection,BLE_ERR_REM_USER_CONN_TERM);if(rc)ESP_LOGW(TAG,"pairing disconnect: %d",rc);}
  else {if(ble_gap_adv_active())ble_gap_adv_stop();advertise();}
  ESP_LOGI(TAG,"pairing discovery enabled for 60 seconds");
+}
+
+esp_err_t whe_ble_select_slot(unsigned slot){
+ if(slot>=3)return ESP_ERR_INVALID_ARG;
+ if(slot==selected_slot && slots[slot].valid)return ESP_OK;
+ esp_err_t e=nvs_set_u8(slot_nvs,"selected",slot);if(e==ESP_OK)e=nvs_commit(slot_nvs);if(e!=ESP_OK)return e;
+ if(connection!=BLE_HS_CONN_HANDLE_NONE && encrypted){uint8_t empty[6]={0};whe_ble_keyboard(0,empty);whe_ble_consumer(0);}
+ selected_slot=slot;encrypted=false;
+ ESP_LOGI(TAG,"select host slot %u",slot+1);
+ if(!slots[slot].valid)whe_ble_pairing_start();
+ else if(connection!=BLE_HS_CONN_HANDLE_NONE)ble_gap_terminate(connection,BLE_ERR_REM_USER_CONN_TERM);
+ else {if(ble_gap_adv_active())ble_gap_adv_stop();advertise();}
+ return ESP_OK;
 }
