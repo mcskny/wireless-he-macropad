@@ -5,6 +5,13 @@ Versions are independent. Tags are `c6/vX.Y.Z`, `s3/vX.Y.Z`, and
 prototype; source commits preserve changes between releases. A version is never
 reused or overwritten after publication.
 
+## C6 0.1.4 — 2026-11-05 (experimental pre-release)
+
+- Handles successful encrypted-link events that arrive before the connection
+  callback and filters known hosts by selected BLE slot while advertising.
+- Build passed; actual reconnect reliability, BLE privacy-address filtering and
+  multi-host switching require hardware validation.
+
 ## C6 0.1.3 — 2026-11-05 (experimental pre-release)
 
 - Rejects a host assigned to a different BLE slot before initiating link security,

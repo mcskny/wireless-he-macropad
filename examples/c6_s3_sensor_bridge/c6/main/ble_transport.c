@@ -10,6 +10,7 @@
 #include "nvs_flash.h"
 #include "nvs.h"
 #include "host/ble_gap.h"
+#include "nimble/hci_common.h"
 #include "services/gap/ble_svc_gap.h"
 #include "host/ble_hs.h"
 #include "host/ble_store.h"
@@ -64,7 +65,10 @@ static int gap_event(struct ble_gap_event *event,void *arg){
  (void)arg;
  if(event->type==BLE_GAP_EVENT_CONNECT){
   ESP_LOGI(TAG,"connect status=%d",event->connect.status);
-  if(event->connect.status==0){connection=event->connect.conn_handle;encrypted=false;
+  if(event->connect.status==0){
+   uint16_t new_handle=event->connect.conn_handle;
+   bool already_ready=(connection==new_handle && encrypted);
+   connection=new_handle;if(!already_ready)encrypted=false;
    struct ble_gap_conn_desc peer;
    if(ble_gap_conn_find(connection,&peer)==0){
     bool wrong_slot=false;
@@ -75,12 +79,16 @@ static int gap_event(struct ble_gap_event *event,void *arg){
      return 0;
     }
    }
-   int rc=ble_gap_security_initiate(connection);if(rc)ESP_LOGW(TAG,"security request %d",rc);}
+   if(!already_ready){int rc=ble_gap_security_initiate(connection);if(rc && rc!=BLE_HS_EALREADY)ESP_LOGW(TAG,"security request %d",rc);}}
   else advertise();
  }else if(event->type==BLE_GAP_EVENT_ENC_CHANGE){
-  if(event->enc_change.conn_handle!=connection){ESP_LOGW(TAG,"ignoring stale encryption event");return 0;}
-  ESP_LOGI(TAG,"encryption status=%d",event->enc_change.status);
   struct ble_gap_conn_desc desc;
+  if(event->enc_change.conn_handle!=connection){
+   if(connection!=BLE_HS_CONN_HANDLE_NONE || event->enc_change.status!=0 || ble_gap_conn_find(event->enc_change.conn_handle,&desc)!=0){ESP_LOGW(TAG,"ignoring stale encryption event");return 0;}
+   /* Bonded hosts can complete encryption before the application receives CONNECT. */
+   connection=event->enc_change.conn_handle;
+  }
+  ESP_LOGI(TAG,"encryption status=%d",event->enc_change.status);
   bool ok=event->enc_change.status==0 && ble_gap_conn_find(event->enc_change.conn_handle,&desc)==0 && desc.sec_state.encrypted && desc.sec_state.bonded;
   if(ok){
    unsigned slot=selected_slot;
@@ -113,6 +121,11 @@ static void advertise(void){
  int rc=ble_gap_adv_set_fields(&fields);if(rc){ESP_LOGE(TAG,"adv fields %d",rc);return;}
  struct ble_gap_adv_params params={0};params.conn_mode=BLE_GAP_CONN_MODE_UND;params.disc_mode=BLE_GAP_DISC_MODE_GEN;
  params.itvl_min=BLE_GAP_ADV_ITVL_MS(30);params.itvl_max=BLE_GAP_ADV_ITVL_MS(50);
+ if(slots[selected_slot].valid){
+  int filter_rc=ble_gap_wl_set(&slots[selected_slot].addr,1);
+  if(filter_rc==0)params.filter_policy=BLE_HCI_ADV_FILT_CONN;
+  else ESP_LOGW(TAG,"host filter unavailable (%d); software slot check remains active",filter_rc);
+ }
  rc=ble_gap_adv_start(own_addr_type,NULL,BLE_HS_FOREVER,&params,gap_event,NULL);
  if(rc)ESP_LOGE(TAG,"advertise %d",rc);
 }
