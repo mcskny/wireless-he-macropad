@@ -569,3 +569,6 @@
 
 "Bağlantı profili" = "Connection profile";
 "Yazdır, seçili Bluetooth layer’ını C6’ya kaydeder. ESP-NOW layer ayarları ayrı saklanır. Analog oyun ve encoder ayarları henüz kaydedilmez." = "Write saves the selected Bluetooth layer to C6. ESP-NOW layer settings are stored separately. Analog game and encoder settings are not yet written.";
+
+"Bu özellik BLE bağlantısında kullanılamıyor. ESP-NOW / S3 bağlantısına geç." = "This feature is unavailable over BLE. Switch to ESP-NOW / S3.";
+"Encoder görevleri BLE üzerinden kullanılamıyor." = "Encoder actions are unavailable over BLE.";

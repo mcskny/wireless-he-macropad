@@ -286,6 +286,7 @@ final class StudioModel: ObservableObject {
     private var bleLightInFlight=false
     private var bluetoothStatusTimer:Timer?
     var deviceVisible:Bool {freshSensor || bluetoothHIDPresent}
+    var usingBLE:Bool { !freshSensor && (bleControlReady || bluetoothHIDPresent || layerBank == "ble") }
     func searchBluetooth(){bleStudio?.setEnabled(true)}
     @Published var config:Config { didSet {
         if let d=try? JSONEncoder().encode(config) { UserDefaults.standard.set(d,forKey:"native-config-v1") }
@@ -884,6 +885,10 @@ private func studioDisplay(_ value:String)->String {
 }
 struct SectionTitle:View { let title:String; var subtitle=""; var body:some View { VStack(alignment:.leading,spacing:4){Text(LocalizedStringKey(title)).font(.headline);if !subtitle.isEmpty {Text(verbatim:studioDisplay(subtitle)).font(.caption).foregroundStyle(.secondary)}} } }
 struct RangeControl:View { let label:String; @Binding var value:Double; var bounds:ClosedRange<Double>=0...100; var unit="%"; var body:some View { VStack(alignment:.leading,spacing:6){HStack{Text(LocalizedStringKey(label));Spacer();Text("\(Int(value))\(unit)").foregroundStyle(accent).monospacedDigit()}.font(.subheadline);Slider(value:$value,in:bounds,step:1).tint(accent).accessibilityLabel(LocalizedStringKey(label)).accessibilityValue("\(Int(value))\(unit)")} } }
+struct UnavailableBLEView:View {
+    let feature:String
+    var body:some View {GlassCard {VStack(alignment:.leading,spacing:8){Label(LocalizedStringKey(feature),systemImage:"slash.circle").font(.headline).foregroundStyle(.secondary);Text("Bu özellik BLE bağlantısında kullanılamıyor. ESP-NOW / S3 bağlantısına geç.").font(.caption).foregroundStyle(.secondary)}}}
+}
 struct MainView:View {
     @ObservedObject var model:StudioModel
     @AppStorage("studio-appearance") private var appearance="system"
@@ -892,7 +897,7 @@ struct MainView:View {
     var body:some View {
         NavigationSplitView {
             VStack(alignment:.leading,spacing:16){HStack{Image(nsImage:studioGridIcon).resizable().interpolation(.high).frame(width:30,height:30);VStack(alignment:.leading){Text("WIRELESS HE").font(.headline);Text("MACROPAD STUDIO").font(.caption2).foregroundStyle(.secondary)}}.padding(.horizontal,12).padding(.top,20)
-                List(selection:$model.page){ForEach(pages,id:\.0){p in Label { Text(LocalizedStringKey(p.0)) } icon: { Image(systemName:p.1) }.tag(p.0)}}.listStyle(.sidebar)
+                List(selection:$model.page){ForEach(pages,id:\.0){p in Label { Text(LocalizedStringKey(p.0)) } icon: { Image(systemName:p.1) }.tag(p.0).disabled(p.0 == "Oyun profili" && model.usingBLE).opacity(p.0 == "Oyun profili" && model.usingBLE ? 0.45 : 1).help(p.0 == "Oyun profili" && model.usingBLE ? "Oyun profili BLE bağlantısında desteklenmiyor." : "")}}.listStyle(.sidebar)
                 VStack(alignment:.leading,spacing:5){
                     HStack(spacing:7){Circle().fill(model.deviceVisible ? accent : Color.orange).frame(width:8,height:8);Text(LocalizedStringKey(model.deviceVisible ? "CİHAZ GÖRÜLÜYOR" : "CİHAZ BAĞLI DEĞİL")).font(.caption2.bold()).foregroundStyle(model.deviceVisible ? accent : Color.orange)}
                     Text(LocalizedStringKey(model.freshSensor ? "USB · sensör verisi geliyor" : model.bleControlReady ? "BLE · ayar bağlantısı hazır" : model.bluetoothHIDPresent ? "BLE · klavye algılandı" : "Cihaz bağlantısı bekleniyor")).font(.caption.weight(.semibold))
@@ -903,7 +908,7 @@ struct MainView:View {
             ScrollView { VStack(alignment:.leading,spacing:18) {
                 HStack(alignment:.top){VStack(alignment:.leading,spacing:5){Text("WIRELESS HE / TEST STUDIO").font(.caption2.weight(.bold)).tracking(1.6).foregroundStyle(accent);Text(LocalizedStringKey(model.page)).font(.system(size:32,weight:.bold,design:.rounded));Text(LocalizedStringKey(subtitle)).font(.subheadline).foregroundStyle(.secondary)};Spacer();VStack(alignment:.trailing,spacing:5){Button("Yazdır",systemImage:"arrow.down.to.line"){model.writeHIDProfiles()}.buttonStyle(.borderedProminent).disabled((!model.freshSensor && !model.bleControlReady) || model.hidWriteStatus?.state == "writing").help(model.bleControlReady && !model.freshSensor ? "Seçili layer’ın klavye ve medya görevlerini C6’ya kaydet." : "Seçili layer’ın klavye ve medya görevlerini S3’e kaydet.");Text(verbatim:model.hidWriteError ?? (model.hidWriteStatus?.state == "saved" ? (model.hidWriteStatus?.message ?? "S3’e kaydedildi") : model.hidWriteStatus?.state == "writing" ? "S3’e yazılıyor… \(model.hidWriteStatus?.message ?? "")" : model.hidWriteStatus?.state == "error" ? (model.hidWriteStatus?.message ?? "Yazma başarısız") : "Seçili layer’ın klavye ve medya görevlerini kaydet")).font(.caption2).foregroundStyle(model.hidWriteError != nil || model.hidWriteStatus?.state == "error" ? Color.orange : Color.secondary).frame(maxWidth:360,alignment:.trailing)}}
                 if let error=model.error {Text(error).foregroundStyle(.orange).font(.caption)}
-                switch model.page {case "Katmanlar":LayersView(model:model);case "Oyun profili":GameProfileView(model:model);case "Hall ayarları":HallView(model:model);case "Aydınlatma":LightView(model:model);case "Güç ve pil":PowerView(model:model);case "Gelişmiş":AdvancedView(model:model);case "Özellikler":FeaturesView(model:model);default:LiveView(model:model)}
+                switch model.page {case "Katmanlar":LayersView(model:model);case "Oyun profili":if model.usingBLE {UnavailableBLEView(feature:"Oyun profili")} else {GameProfileView(model:model)};case "Hall ayarları":HallView(model:model);case "Aydınlatma":LightView(model:model);case "Güç ve pil":PowerView(model:model);case "Gelişmiş":AdvancedView(model:model);case "Özellikler":FeaturesView(model:model);default:LiveView(model:model)}
             }.padding(28).frame(maxWidth:.infinity,alignment:.leading)}.frame(maxWidth:.infinity,maxHeight:.infinity).background(studioBackground.ignoresSafeArea())
         }.environment(\.locale,Locale(identifier:language)).preferredColorScheme(appearance == "dark" ? .dark : appearance == "light" ? .light : nil).tint(accent)
     }
@@ -1291,7 +1296,7 @@ struct LayersView:View {
         ("Görüşme",["Mikrofonu aç / kapat","Kamerayı aç / kapat","Ekran paylaşımını aç / kapat","Görüşmeden ayrıl"])
     ]
     private var preset:LayerPreset { presets.first(where:{$0.id==selectedPreset}) ?? presets[0] }
-    private var usingBLE:Bool { !model.freshSensor && (model.bleControlReady || model.bluetoothHIDPresent) }
+    private var usingBLE:Bool { model.usingBLE }
     private func unsupportedOverBLE(_ item:LayerPreset)->Bool {
         usingBLE && ["Euro Truck Simulator 2", "Assetto Corsa", "Microsoft Flight Simulator", "Farming Simulator"].contains(item.id)
     }
@@ -1299,7 +1304,7 @@ struct LayersView:View {
         VStack(spacing:16) {
             GlassCard {VStack(alignment:.leading,spacing:14) {
                 HStack {SectionTitle(title:"Katmanlarını düzenle",subtitle:"Dört ayrı taslak · önce düzenlenecek katmanı seç");Spacer();Text("YEREL TASLAK").font(.caption2.bold()).foregroundStyle(accent).padding(8).background(accent.opacity(0.1),in:Capsule())}
-                Toggle("Mac klavye çıktısını etkinleştir",isOn:$model.macOutputEnabled).toggleStyle(.switch)
+                Toggle("Mac klavye çıktısını etkinleştir",isOn:$model.macOutputEnabled).toggleStyle(.switch).disabled(usingBLE).opacity(usingBLE ? 0.45 : 1)
                 if model.macOutputEnabled {
                     Text(AXIsProcessTrusted() ? "Kalibre edilmiş tuşlar seçili katmandaki desteklenen klavye görevlerini gönderir." : "Klavye çıktısı için Sistem Ayarları → Gizlilik ve Güvenlik → Erişilebilirlik bölümünden Wireless HE Studio’ya izin ver.").font(.caption).foregroundStyle(.secondary)
                     Text("Seçilen klavye tuşları, desteklenen kısayollar ve medya görevleri çalışır. Encoder verisi henüz gelmiyor.").font(.caption).foregroundStyle(.secondary)
@@ -1361,6 +1366,8 @@ struct LayersView:View {
                         Text("Önizleme yalnızca eşikleri gösterir; gerçek tuş basışı veya Rapid Trigger davranışı oluşturmaz.").font(.caption).foregroundStyle(.secondary)
                     }
                     Divider()
+                    if usingBLE {Label("Encoder görevleri BLE üzerinden kullanılamıyor.",systemImage:"info.circle").font(.caption).foregroundStyle(.secondary)}
+                    VStack(alignment:.leading,spacing:12) {
                     SectionTitle(title:"Encoder",subtitle:"Her katman için döndürme ve basma görevleri")
                     Text("NORMAL").font(.caption2.bold()).tracking(1).foregroundStyle(accent)
                     encoderAction("Sola çevir",value:$model.config.layers[model.layer].left,rotation:true)
@@ -1381,6 +1388,7 @@ struct LayersView:View {
                         }.font(.caption)
                     }
                     Text("Encoder görevleri standart HID komutları için hazırlanır; ekran parlaklığı desteği bilgisayara bağlıdır. Cihaz aktarımı ve layer basılı davranışı henüz uygulanmadı.").font(.caption).foregroundStyle(.secondary)
+                    }.disabled(usingBLE).opacity(usingBLE ? 0.45 : 1)
                 }.textFieldStyle(.roundedBorder)}
             }
             GlassCard {VStack(alignment:.leading,spacing:16) {
@@ -1857,9 +1865,9 @@ struct PowerView:View {
         HStack(alignment:.top,spacing:16) {
             GlassCard {VStack(alignment:.leading,spacing:20) {
                 SectionTitle(title:"Güç davranışı",subtitle:"Algoritma taslağı · cihazda uygulanmaz")
-                Picker("Mod",selection:$model.config.mode){ForEach(["Dijital","Hibrit","Agresif"],id:\.self){Text(LocalizedStringKey($0)).tag($0)}}.labelsHidden().pickerStyle(.segmented)
+                Picker("Mod",selection:$model.config.mode){ForEach(["Dijital","Hibrit","Agresif"],id:\.self){Text(LocalizedStringKey($0)).tag($0)}}.labelsHidden().pickerStyle(.segmented).disabled(model.usingBLE).opacity(model.usingBLE ? 0.45 : 1)
                 HStack(alignment:.top,spacing:12){Image(systemName:"bolt.circle.fill").font(.title2).foregroundStyle(accent);VStack(alignment:.leading,spacing:5){Text(verbatim:studioDisplay(model.config.mode)+" "+studioDisplay("mod")).font(.headline);Text(LocalizedStringKey(modeDescription)).font(.caption).foregroundStyle(.secondary)}}.padding(16).frame(maxWidth:.infinity,alignment:.leading).background(accent.opacity(0.07),in:RoundedRectangle(cornerRadius:14))
-                RangeControl(label:"Hibrit hareketsizlik süresi",value:$model.config.idle,bounds:1...240,unit:" dk")
+                RangeControl(label:"Hibrit hareketsizlik süresi",value:$model.config.idle,bounds:1...240,unit:" dk").disabled(model.usingBLE).opacity(model.usingBLE ? 0.45 : 1)
                 RangeControl(label:"Temel parlaklık",value:$model.config.brightness)
                 Text("Katman parlaklığı için üst sınırdır; 2B ve 3B önizlemede uygulanır.").font(.caption).foregroundStyle(.secondary)
                 Text("Seçimler yerel taslak olarak saklanır. Pil seviyesi ve güç tüketimi ölçülmüyor.").font(.caption).foregroundStyle(.secondary)
@@ -1883,7 +1891,7 @@ struct AdvancedView:View { @ObservedObject var model:StudioModel
     private func axisBinding(_ path:WritableKeyPath<Config,Int>,_ gamePath:KeyPath<GameSettings,Int>)->Binding<Int> {
         Binding(get:{game.enabled ? game[keyPath:gamePath]+1 : model.config[keyPath:path]},set:{if !game.enabled {model.config[keyPath:path]=$0}})
     }
-    var body:some View {VStack(spacing:16){GlassCard{VStack(alignment:.leading,spacing:14){SectionTitle(title:"Snap Tap / SOCD",subtitle:"İki tuşa basıldığında son basılana öncelik verilmesi hedeflenir");Picker("Katman",selection:$model.layer){ForEach(0..<4){Text("Layer \($0+1)").tag($0)}}.pickerStyle(.segmented);Toggle("SOCD etkin",isOn:socdBinding(\.enabled));HStack{keyPicker("Birinci tuş",socdBinding(\.a));keyPicker("İkinci tuş",socdBinding(\.b))};if socd.enabled && socd.a==socd.b {Text("İki farklı tuş seç.").font(.caption).foregroundStyle(.orange)}}};GlassCard{VStack(alignment:.leading,spacing:14){SectionTitle(title:"Joystick eksenleri",subtitle:game.enabled ? "Seçili katmanın oyun yönleri kullanılıyor" : "Oyun modu kapalı · genel taslak");Picker("Katman",selection:$model.layer){ForEach(0..<4){Text("Layer \($0+1)").tag($0)}}.pickerStyle(.segmented);HStack{axis("X−",axisBinding(\.joyXM,\.left));axis("X+",axisBinding(\.joyXP,\.right));axis("Y−",axisBinding(\.joyYM,\.back));axis("Y+",axisBinding(\.joyYP,\.forward))}.disabled(game.enabled);if game.enabled {Text("Yönleri Oyun profili bölümünden değiştir. Genel eksen taslağı oyun modu kapanınca korunur.").font(.caption).foregroundStyle(.secondary)}}};GlassCard{VStack(alignment:.leading,spacing:10){SectionTitle(title:"Makro taslağı",subtitle:"Metin taslaktır; makro kodu veya HID raporu oluşturmaz");TextEditor(text:$model.config.macro).font(.body).frame(height:100).scrollContentBackground(.hidden).padding(8).background(.black.opacity(0.2),in:RoundedRectangle(cornerRadius:8))}};GlassCard{VStack(alignment:.leading,spacing:10){SectionTitle(title:"Demo taslağı",subtitle:"Yalnızca bu uygulamanın yerel ayarları");Button("Taslağı JSON olarak dışa aktar…"){exportConfig()}}}} }
+    var body:some View {VStack(spacing:16){GlassCard{VStack(alignment:.leading,spacing:14){SectionTitle(title:"Snap Tap / SOCD",subtitle:"İki tuşa basıldığında son basılana öncelik verilmesi hedeflenir");Picker("Katman",selection:$model.layer){ForEach(0..<4){Text("Layer \($0+1)").tag($0)}}.pickerStyle(.segmented);Toggle("SOCD etkin",isOn:socdBinding(\.enabled));HStack{keyPicker("Birinci tuş",socdBinding(\.a));keyPicker("İkinci tuş",socdBinding(\.b))};if socd.enabled && socd.a==socd.b {Text("İki farklı tuş seç.").font(.caption).foregroundStyle(.orange)}}};GlassCard{VStack(alignment:.leading,spacing:14){SectionTitle(title:"Joystick eksenleri",subtitle:game.enabled ? "Seçili katmanın oyun yönleri kullanılıyor" : "Oyun modu kapalı · genel taslak");Picker("Katman",selection:$model.layer){ForEach(0..<4){Text("Layer \($0+1)").tag($0)}}.pickerStyle(.segmented);HStack{axis("X−",axisBinding(\.joyXM,\.left));axis("X+",axisBinding(\.joyXP,\.right));axis("Y−",axisBinding(\.joyYM,\.back));axis("Y+",axisBinding(\.joyYP,\.forward))}.disabled(game.enabled);if game.enabled {Text("Yönleri Oyun profili bölümünden değiştir. Genel eksen taslağı oyun modu kapanınca korunur.").font(.caption).foregroundStyle(.secondary)}}}.disabled(model.usingBLE).opacity(model.usingBLE ? 0.45 : 1);GlassCard{VStack(alignment:.leading,spacing:10){SectionTitle(title:"Makro taslağı",subtitle:"Metin taslaktır; makro kodu veya HID raporu oluşturmaz");TextEditor(text:$model.config.macro).font(.body).frame(height:100).scrollContentBackground(.hidden).padding(8).background(.black.opacity(0.2),in:RoundedRectangle(cornerRadius:8))}}.disabled(model.usingBLE).opacity(model.usingBLE ? 0.45 : 1);GlassCard{VStack(alignment:.leading,spacing:10){SectionTitle(title:"Demo taslağı",subtitle:"Yalnızca bu uygulamanın yerel ayarları");Button("Taslağı JSON olarak dışa aktar…"){exportConfig()}}}} }
     func exportConfig() { let panel=NSSavePanel(); panel.nameFieldStringValue="wireless-he-demo.json"; panel.begin { result in if result == .OK, let url=panel.url { do { let encoder=JSONEncoder(); encoder.outputFormatting=[.prettyPrinted,.sortedKeys]; try encoder.encode(model.config).write(to:url,options:.atomic) } catch { let alert=NSAlert(error:error); alert.runModal() } } } }
     func keyPicker(_ title:String,_ v:Binding<Int>)->some View {Picker(title,selection:v){ForEach(0..<12){Text("KEY \($0)").tag($0)}}}
     func axis(_ title:String,_ v:Binding<Int>)->some View {Picker(title,selection:v){Text("Yok").tag(0);ForEach(0..<12){Text("KEY \($0)").tag($0+1)}}}

@@ -5,6 +5,11 @@ Versions are independent. Tags are `c6/vX.Y.Z`, `s3/vX.Y.Z`, and
 prototype; source commits preserve changes between releases. A version is never
 reused or overwritten after publication.
 
+## Studio 0.1.5 — 2026-11-06 (experimental pre-release)
+
+- Disables the game profile, encoder, joystick and macro controls in BLE mode, while retaining BLE Hall / Rapid Trigger, SOCD, key assignments and lighting configuration.
+- BLE sensor visualization remains out of scope. Availability guards and the app compile were checked; an interactive visual test is still needed.
+
 ## C6 0.1.6 and Studio 0.1.4 — 2026-11-06 (experimental pre-releases)
 
 - Store BLE and ESP-NOW layer profiles and lighting separately on the C6, and separate local Studio layer drafts by connection mode. Existing shared settings are copied once on migration.
