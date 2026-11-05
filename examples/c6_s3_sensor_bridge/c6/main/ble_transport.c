@@ -65,6 +65,16 @@ static int gap_event(struct ble_gap_event *event,void *arg){
  if(event->type==BLE_GAP_EVENT_CONNECT){
   ESP_LOGI(TAG,"connect status=%d",event->connect.status);
   if(event->connect.status==0){connection=event->connect.conn_handle;encrypted=false;
+   struct ble_gap_conn_desc peer;
+   if(ble_gap_conn_find(connection,&peer)==0){
+    bool wrong_slot=false;
+    for(unsigned i=0;i<3;i++)if(i!=selected_slot && slots[i].valid && addr_equal(&slots[i].addr,&peer.peer_id_addr))wrong_slot=true;
+    if(wrong_slot){ESP_LOGW(TAG,"rejecting host assigned to another slot");
+     int rc=ble_gap_terminate(connection,BLE_ERR_REM_USER_CONN_TERM);
+     if(rc)ESP_LOGE(TAG,"terminate wrong host failed: %d",rc);
+     return 0;
+    }
+   }
    int rc=ble_gap_security_initiate(connection);if(rc)ESP_LOGW(TAG,"security request %d",rc);}
   else advertise();
  }else if(event->type==BLE_GAP_EVENT_ENC_CHANGE){

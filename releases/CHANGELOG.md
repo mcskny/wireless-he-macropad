@@ -5,6 +5,13 @@ Versions are independent. Tags are `c6/vX.Y.Z`, `s3/vX.Y.Z`, and
 prototype; source commits preserve changes between releases. A version is never
 reused or overwritten after publication.
 
+## C6 0.1.3 — 2026-11-05 (experimental pre-release)
+
+- Rejects a host assigned to a different BLE slot before initiating link security,
+  so a previous host is less likely to occupy an empty pairing slot.
+- Build passed; the previous host's reconnection contention was observed, but
+  the fix and three-host switching still require physical verification.
+
 ## C6 0.1.2 — 2026-11-05 (experimental pre-release)
 
 - Adds a two-pulse blue column indicator when selecting a BLE device slot.
