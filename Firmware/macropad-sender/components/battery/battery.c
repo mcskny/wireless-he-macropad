@@ -144,10 +144,11 @@ void battery_blink_layer(uint8_t active_layer)
 
 uint8_t battery_adc_to_percent(uint16_t adc_raw)
 {
-    /* STUB: lineer map adc → yüzde. Kalibrasyon Kconfig ile yapilacak.
-       Varsayim: adc_min=0 (0V), adc_max=4095 (3.3V). DONANIMA BAGLI, degistir. */
-    const uint16_t adc_min = 0;
-    const uint16_t adc_max = 4095;
+    /* Kartta olculmus ham ADC araliklari menuconfig'ten girilir. */
+    const uint16_t adc_min = CONFIG_BATTERY_ADC_EMPTY_RAW;
+    const uint16_t adc_max = CONFIG_BATTERY_ADC_FULL_RAW;
+
+    if (adc_max <= adc_min) return 0;
 
     if (adc_raw <= adc_min) {
         return 0;

@@ -31,6 +31,8 @@ extern "C" {
 
 /** Joystick eksen sayisi (X+, X-, Y+, Y-). */
 #define S3_JOYSTICK_AXIS_COUNT 4
+#define S3_MACRO_MAX_STEPS 16
+#define S3_MACRO_MAX_STEPS 16
 
 /**
  * @brief S3 ana calisma modu (Bölüm 2 state machine).
@@ -76,6 +78,9 @@ typedef struct {
     uint16_t key_mappings[S3_LAYER_COUNT][S3_KEY_COUNT]; /**< 4 katman × 12 tuş keycode */
     uint8_t  snap_tap_pairs[S3_SNAP_TAP_PAIR_MAX]; /**< Snap Tap çiftleri (tuş indeksleri) */
     uint8_t  joystick_axes[S3_JOYSTICK_AXIS_COUNT]; /**< Joystick eksen eşleme (X+,X-,Y+,Y-) */
+    uint8_t macro_trigger_key;
+    uint8_t macro_step_count;
+    struct { uint16_t keycode; uint16_t delay_ms; } macro_steps[S3_MACRO_MAX_STEPS];
 } calibration_config_t;
 
 /**

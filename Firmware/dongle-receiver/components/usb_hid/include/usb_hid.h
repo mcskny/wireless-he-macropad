@@ -35,14 +35,14 @@ extern "C" {
 esp_err_t usb_hid_init(void);
 
 /**
- * @brief NKRO klavye raporu gonder (Bölüm 6).
+ * @brief 6KRO klavye raporu gonder (Bölüm 6).
  *
  * Sadece durum degisirse gonderir (rapor karsilastirma, gereksiz bandwidth yok).
  *
  * @param active_keys  12 tuş basili durumu (Hall motoru ciktisi).
  * @param key_mappings 4 katman × 12 tuş keycode tablosu (NVS'den).
  * @param layer         Aktif katman indeksi (0-3).
- * @return ESP_OK (stub) veya TinyUSB hatasi.
+ * @return ESP_OK veya TinyUSB hatasi.
  */
 esp_err_t usb_hid_send_keyboard(const bool active_keys[12],
                                 const uint16_t key_mappings[4][12],
@@ -52,20 +52,23 @@ esp_err_t usb_hid_send_keyboard(const bool active_keys[12],
  * @brief Gamepad analog eksen raporu gonder (Bölüm 4.4 + 6).
  * @param joy_x X ekseni (-32768..32767).
  * @param joy_y Y ekseni (-32768..32767).
- * @return ESP_OK (stub).
+ * @return ESP_OK veya TinyUSB hatasi.
  */
+/** Tek bir HID usage kodunu makro raporu olarak gonder (0 = release). */
+esp_err_t usb_hid_send_keycode(uint16_t keycode);
+
 esp_err_t usb_hid_send_gamepad(int16_t joy_x, int16_t joy_y);
 
 /**
  * @brief Consumer Control raporu gonder (medya tuşlari).
  * @param usage HID Consumer Control usage code (0 = release).
- * @return ESP_OK (stub).
+ * @return ESP_OK veya TinyUSB hatasi.
  */
 esp_err_t usb_hid_send_consumer(uint16_t usage);
 
 /**
  * @brief Tum tuşlari birak (watchdog timeout icin, Bölüm 3).
- * @return ESP_OK (stub).
+ * @return ESP_OK veya TinyUSB hatasi.
  */
 esp_err_t usb_hid_release_all(void);
 

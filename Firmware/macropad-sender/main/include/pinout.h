@@ -43,10 +43,10 @@ extern "C" {
 
 /* =========================================================================
  * Dijital Tus Shift Register (SN74HC165 x2, bit-bang)
- * 24-bit zincirli okuma; ilk 12 bit TCS40DLR durumlaridir.
+ * PCB'de iki adet SN74HC165, toplam 16 bit okunur.
  * ========================================================================= */
 #define PIN_SR_LATCH         (0)    ///< U29/U30 SH/~LD (latch / ornekleme)
-#define PIN_SR_DATA          (1)    ///< U29 QH (seri veri cikisi), 24 bit shift-in
+#define PIN_SR_DATA          (1)    ///< U29 QH (seri veri cikisi), 16 bit shift-in
 
 /* =========================================================================
  * LED Shift Register (74HC595, bit-bang)

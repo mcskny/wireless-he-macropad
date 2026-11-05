@@ -1,0 +1,83 @@
+menu "Lighting Lab"
+config LAB_PEER_MAC
+    string "Peer station MAC address (AA:BB:CC:DD:EE:FF)"
+    default ""
+    help
+        Enter the other board's Wi-Fi station MAC. Empty means radio disabled.
+config LAB_WIFI_CHANNEL
+    int "ESP-NOW channel"
+    range 1 13
+    default 1
+endmenu
+menu "Lighting Lab C6 hardware"
+config LAB_LED_OUTPUT
+    bool "Enable SK6812 output (verify wiring before enabling)"
+    default n
+config LAB_LED_GPIO
+    int "SK6812 data GPIO"
+    range 0 30
+    default 5
+config LAB_BOOST_CONTROL
+    bool "Drive LED boost enable GPIO (verify circuit first)"
+    default n
+config LAB_BOOST_GPIO
+    int "LED boost enable GPIO"
+    range 0 30
+    default 14
+config LAB_BOOST_ACTIVE_LEVEL
+    int "LED boost enable active level"
+    range 0 1
+    default 1
+endmenu
+menu "Lighting Lab analog inputs"
+config LAB_ANALOG_INPUT
+    bool "Read MCP3202 and CD74HC4067 (verify wiring first)"
+    default n
+config LAB_ADC_CHANNEL
+    int "MCP3202 channel (0 or 1; check schematic)"
+    range 0 1
+    default 0
+config LAB_ADC_SCK
+    int "ADC SCK GPIO"
+    range 0 30
+    default 6
+config LAB_ADC_MISO
+    int "ADC MISO GPIO"
+    range 0 30
+    default 2
+config LAB_ADC_MOSI
+    int "ADC MOSI GPIO"
+    range 0 30
+    default 3
+config LAB_ADC_CS
+    int "ADC CS GPIO"
+    range 0 30
+    default 7
+config LAB_MUX_S0
+    int "MUX S0 GPIO"
+    range 0 30
+    default 18
+config LAB_MUX_S1
+    int "MUX S1 GPIO"
+    range 0 30
+    default 19
+config LAB_MUX_S2
+    int "MUX S2 GPIO"
+    range 0 30
+    default 20
+config LAB_MUX_S3
+    int "MUX S3 GPIO"
+    range 0 30
+    default 15
+config LAB_ANALOG_POWER_CONTROL
+    bool "Drive analog power-enable GPIO (verify circuit first)"
+    default n
+config LAB_ANALOG_POWER_GPIO
+    int "Analog power-enable GPIO"
+    range 0 30
+    default 21
+config LAB_ANALOG_POWER_LEVEL
+    int "Analog power-enable active level"
+    range 0 1
+    default 1
+endmenu

@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "config": {
+    "layers": [
+      {"light": {"effect": "Nefes", "color": "#A6F0CA", "brightness": 60, "speed": 50, "rainbowBreath": true}},
+      {"light": {"effect": "Kayan ışık", "color": "#88CFFF", "brightness": 50, "speed": 50, "rainbowSweep": true, "sweepColorStyle": "tur"}},
+      {"light": {"effect": "Tepkisel", "color": "#FF8F86", "brightness": 60, "speed": 50, "depthSensitive": true, "rainbowReactive": true}},
+      {"light": {"effect": "Basılan yerden dalga", "color": "#BC9BFF", "brightness": 60, "speed": 50, "rainbowWave": true}}
+    ]
+  }
+}

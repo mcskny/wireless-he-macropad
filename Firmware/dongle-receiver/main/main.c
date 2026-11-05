@@ -48,6 +48,7 @@ static uint32_t s_last_report_ms = 0;
 static uint32_t s_last_report_packets_lost = 0;
 static uint32_t s_packets_reordered = 0;
 static uint32_t s_last_report_packets_reordered = 0;
+static bool s_macro_trigger_was_pressed = false;
 
 /** Sira karisikligi icin makul ust sinir: bunun ustundeki farklar
  *  gercek kayip yerine "reorder/duplicate" sayilir (yanlis pozitifi onler). */
@@ -237,10 +238,32 @@ static bool normal_mode_step(s3_system_state_t *state)
 
         /* 4. Hall Effect motoru (Bölüm 4, sadece 23B pakette) */
         if (has_analog) {
-            hall_engine_process(analog, &state->calibration, state->keys,
+            hall_engine_process(analog, buttons, &state->calibration, state->keys,
                                 state->active_keys, &state->joystick_x,
                                 &state->joystick_y);
+        } else {
+            /* 5-byte paket dijital mod/search-mode yoludur. */
+            hall_engine_process_digital(buttons, &state->calibration,
+                                        state->active_keys);
+            memset(state->keys, 0, sizeof(state->keys));
+            state->joystick_x = state->joystick_y = 0;
         }
+
+        /* User-configured physical key starts a macro on the press edge. */
+        uint8_t trigger_key = state->calibration.macro_trigger_key;
+        bool trigger_pressed = trigger_key < S3_KEY_COUNT && state->active_keys[trigger_key];
+        if (trigger_pressed && !s_macro_trigger_was_pressed &&
+            state->calibration.macro_step_count > 0 && !macro_engine_is_running()) {
+            macro_step_t steps[MACRO_MAX_STEPS];
+            uint8_t count = state->calibration.macro_step_count;
+            if (count > MACRO_MAX_STEPS) count = MACRO_MAX_STEPS;
+            for (uint8_t i = 0; i < count; ++i) {
+                steps[i].keycode = state->calibration.macro_steps[i].keycode;
+                steps[i].delay_ms = state->calibration.macro_steps[i].delay_ms;
+            }
+            (void)macro_engine_start(steps, count);
+        }
+        s_macro_trigger_was_pressed = trigger_pressed;
 
         /* 5. Layer update (Bölüm 5.1: SW2 kisa/uzun basis) */
         state->current_layer_index = layer_manager_update(sw2_pressed, now_ms);
@@ -258,6 +281,7 @@ static bool normal_mode_step(s3_system_state_t *state)
             /* C6 bağlantı koptu: tum tuşlari birak */
             hall_engine_release_all(state->keys, state->active_keys,
                                     &state->joystick_x, &state->joystick_y);
+            macro_engine_stop();
             usb_hid_release_all();
         }
     }
@@ -350,17 +374,27 @@ void app_main(void)
             /* NORMAL_MODE: boot button veya C6 config request → CONFIG_AP */
             if (boot_short_press || normal_mode_step(&state)) {
                 ESP_LOGI(TAG, "CONFIG_AP_MODE'a geciliyor");
-                config_ap_start(CONFIG_AP_SSID, CONFIG_AP_PASSWORD, CONFIG_AP_CHANNEL);
-                state.mode = S3_MODE_CONFIG_AP;
+                esp_err_t ap_ret = espnow_rx_suspend();
+                if (ap_ret == ESP_OK) {
+                    ap_ret = config_ap_start(CONFIG_AP_SSID, CONFIG_AP_PASSWORD, CONFIG_AP_CHANNEL);
+                    if (ap_ret == ESP_OK) state.mode = S3_MODE_CONFIG_AP;
+                    else {
+                        ESP_LOGE(TAG, "Config AP baslatilamadi: %s", esp_err_to_name(ap_ret));
+                        (void)espnow_rx_resume(CONFIG_ESPNOW_CHANNEL);
+                    }
+                } else ESP_LOGE(TAG, "ESP-NOW durdurulamadi: %s", esp_err_to_name(ap_ret));
             }
         } else {
             /* CONFIG_AP_MODE: boot button veya web exit → NORMAL */
             if (boot_short_press || config_ap_mode_step(&state)) {
                 ESP_LOGI(TAG, "NORMAL_MODE'a donuluyor");
-                config_ap_stop();
-                uint8_t c6_mac[6] = {0};
-                parse_mac(CONFIG_C6_PEER_MAC, c6_mac);
-                espnow_rx_init(c6_mac, CONFIG_ESPNOW_CHANNEL);
+                (void)config_ap_stop();
+                esp_err_t rx_ret = espnow_rx_resume(CONFIG_ESPNOW_CHANNEL);
+                if (rx_ret != ESP_OK) {
+                    ESP_LOGE(TAG, "ESP-NOW yeniden baslatilamadi: %s", esp_err_to_name(rx_ret));
+                    vTaskDelay(pdMS_TO_TICKS(100));
+                    continue;
+                }
                 watchdog_feed();
                 state.mode = S3_MODE_NORMAL;
             }

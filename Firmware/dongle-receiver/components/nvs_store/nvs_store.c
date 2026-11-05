@@ -58,6 +58,8 @@ static const calibration_config_t s_default_calibration = {
     },
     .snap_tap_pairs = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF},  /* 0xFF = bos */
     .joystick_axes = {0xFF, 0xFF, 0xFF, 0xFF},  /* 0xFF = bos */
+    .macro_trigger_key = 0xFF,
+    .macro_step_count = 0,
 };
 
 esp_err_t nvs_store_init(void)
@@ -96,8 +98,8 @@ esp_err_t nvs_store_load_calibration(calibration_config_t *out)
     memcpy(out, &s_default_calibration, sizeof(calibration_config_t));
 
     /* Blob oku; yoksa default kalir */
-    size_t required_size = sizeof(calibration_config_t);
-    esp_err_t ret = nvs_get_blob(s_handle, NVS_KEY_CALIBRATION, out, &required_size);
+    size_t required_size = 0;
+    esp_err_t ret = nvs_get_blob(s_handle, NVS_KEY_CALIBRATION, NULL, &required_size);
     if (ret == ESP_ERR_NVS_NOT_FOUND) {
         ESP_LOGI(TAG, "Kalibrasyon NVS'de yok, default yuklendi");
         return ESP_OK;
@@ -107,8 +109,13 @@ esp_err_t nvs_store_load_calibration(calibration_config_t *out)
         return ret;
     }
 
-    ESP_LOGI(TAG, "Kalibrasyon NVS'den yuklendi (%u byte)",
-             (unsigned)required_size);
+    if (required_size != sizeof(calibration_config_t)) {
+        ESP_LOGW(TAG, "Eski kalibrasyon blob boyutu (%u); varsayilanlar kullaniliyor", (unsigned)required_size);
+        return ESP_OK;
+    }
+    ret = nvs_get_blob(s_handle, NVS_KEY_CALIBRATION, out, &required_size);
+    if (ret != ESP_OK) return ret;
+    ESP_LOGI(TAG, "Kalibrasyon NVS'den yuklendi (%u byte)", (unsigned)required_size);
     return ESP_OK;
 }
 

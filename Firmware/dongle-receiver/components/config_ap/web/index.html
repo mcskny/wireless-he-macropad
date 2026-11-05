@@ -1,33 +1,35 @@
 <!DOCTYPE html>
 <html lang="tr">
 <head>
-    <meta charset="UTF-8">
-    <title>ESP32-S3 Dongle Config</title>
-    <style>
-        body { font-family: monospace; background: #121212; color: #00ff66; padding: 20px; }
-        .card { background: #1e1e1e; border: 1px solid #333; padding: 15px; border-radius: 8px; margin-bottom: 10px; }
-        button { background: #00ff66; color: #000; font-weight: bold; padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; }
-    </style>
-</head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Macropad ayarları</title>
+<style>
+body{font:15px system-ui,sans-serif;background:#121212;color:#eee;padding:20px;max-width:900px;margin:auto}
+.card{background:#1e1e1e;border:1px solid #444;padding:16px;border-radius:8px;margin:12px 0}
+button{background:#00c878;color:#001;font-weight:700;padding:9px 14px;border:0;border-radius:4px;margin:4px;cursor:pointer}
+textarea{width:100%;height:360px;background:#090909;color:#baffd5;border:1px solid #555;padding:10px;box-sizing:border-box;font:13px monospace}
+#status{white-space:pre-wrap;color:#9cf}
+</style></head>
 <body>
-    <h2>ESP32-S3 Kalibrasyon Arayüzü</h2>
-    <div class="card">
-        <h3>Canlı ADC Verisi:</h3>
-        <p id="adc">Bekleniyor...</p>
-        <button onclick="send('get_adc')">ADC Akışını Başlat</button>
-        <button onclick="send('stop_adc')">Durdur</button>
-    </div>
-    <button onclick="send('exit')" style="background:#ff3333; color:#fff;">Kaydet & Çık</button>
-
-    <script>
-        let ws = new WebSocket(`ws://${location.host}/ws`);
-        ws.onopen = () => console.log("WebSocket Bağlandı");
-        ws.onmessage = (e) => {
-            if (e.data.startsWith("adc:")) {
-                document.getElementById("adc").innerText = e.data.replace("adc:", "");
-            }
-        };
-        function send(cmd) { ws.send(cmd); }
-    </script>
-</body>
-</html>
+<h2>Macropad kalibrasyon ve ayar</h2>
+<div class="card"><h3>Canlı analog ölçüm</h3><p id="adc">Akış kapalı</p>
+<button onclick="send({cmd:'get_adc'})">ADC akışını başlat</button>
+<button onclick="send({cmd:'stop_adc'})">Durdur</button></div>
+<div class="card"><h3>Kalibrasyon JSON</h3>
+<p>Mevcut ayarları yükleyip düzenleyebilirsiniz. Makro için macro_trigger_key alanına tuş numarası (0–11) veya kapatmak için 255 girin; macro_steps alanı [HID kodu, süre_ms] çiftlerinden oluşur. keycode 0 tuş bırakır; medya tuşları için Consumer HID usage değerine 0x100 ekleyin (ör. ses açma için 489 (0x1E9)).</p>
+<button onclick="send({cmd:'get_calib'})">Ayarları yükle</button>
+<button onclick="saveCalib()">Ayarları doğrula ve kaydet</button>
+<textarea id="calib" spellcheck="false" placeholder="Kalibrasyon JSON'u burada görünür"></textarea>
+<p id="status">WebSocket bağlantısı bekleniyor…</p></div>
+<button onclick="send({cmd:'exit'})" style="background:#c33;color:#fff">Kaydetmeden çık</button>
+<script>
+const ws=new WebSocket(`ws://${location.host}/ws`), status=document.getElementById('status');
+ws.onopen=()=>{status.textContent='Bağlandı';send({cmd:'get_calib'});};
+ws.onclose=()=>status.textContent='Bağlantı kapandı';
+ws.onerror=()=>status.textContent='WebSocket bağlantı hatası';
+ws.onmessage=e=>{if(e.data.startsWith('adc:')){document.getElementById('adc').textContent=e.data.slice(4);return;}
+try{const m=JSON.parse(e.data);if(m.cmd==='calib')document.getElementById('calib').value=JSON.stringify(m.data,null,2);
+status.textContent= m.cmd==='error' ? `Hata: ${m.message}` : `Yanıt: ${m.cmd}`;}catch{status.textContent=e.data;}};
+function send(m){if(ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify(m));}
+function saveCalib(){try{const data=JSON.parse(document.getElementById('calib').value);send({cmd:'set_calib',data});status.textContent='Kaydetme isteği gönderildi';}catch(e){status.textContent='JSON biçimi hatalı: '+e.message;}}
+</script></body></html>

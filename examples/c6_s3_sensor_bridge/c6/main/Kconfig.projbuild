@@ -1,0 +1,24 @@
+menu "Wireless HE experimental power policy"
+    config WHE_POWER_GATE_EXPERIMENT
+        bool "Enable experimental MOSFET idle duty cycling (GPIO23 / D5)"
+        default n
+        help
+            Only for the XIAO test wiring with a verified active-low P-MOSFET.
+            Idle: power rail in short pulses and sample at 100 Hz.
+            Press detected: rail remains on, target 1 kHz until released for 2 s.
+            Requires removing any direct connection between VCC_ANALOG and 3V3.
+            Test current, settling, wake threshold and partial power/backfeed.
+    config WHE_SENSOR_STARTUP_US
+        int "Rail power-on wait (microseconds)"
+        range 330 5000
+        default 600
+        depends on WHE_POWER_GATE_EXPERIMENT
+    config WHE_WAKE_DELTA_ADC
+        int "Wake threshold above idle baseline (raw ADC counts)"
+        range 2 1000
+        default 20
+    config WHE_RELEASE_DELTA_ADC
+        int "Release threshold above idle baseline (raw ADC counts)"
+        range 0 999
+        default 17
+endmenu

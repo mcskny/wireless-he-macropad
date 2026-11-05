@@ -24,6 +24,7 @@
 #include "esp_system.h"
 #include "esp_check.h"
 #include "esp_timer.h"
+#include "esp_attr.h"
 
 #include "pinout.h"
 #include "system_state.h"
@@ -45,20 +46,22 @@
 
 static const char *TAG = "macropad";
 
-/** Shift register bit sayisi (algoritma 16, pcb 24 - Kconfig'e tasinacak). */
+/** PCB'deki iki SN74HC165: toplam 16 paralel giriş. */
 #define SHIFT_IN_BITS 16
 #define SHIFT_OUT_BITS 8
+#define ENCODER_COUNTS_PER_DETENT 4
 
-/* SR bit mapping (VARSAYIM - donanim testinde dogrulanacak):
- *   sr_val bit0-11: 12 dijital tuş (bit0=Tus1..bit11=Tus12)
- *   sr_val bit2    : SW2 (U30 F) - OVERLAP! DÜZELTME GEREKLI
- * Asil mapping: SN74HC165 H=bit0..A=bit7. U30 E=bit3, F=bit2.
- * digital_buttons = sr_val & 0x0FFF (alt 12 bit)
- * SW2 = (sr_val >> 2) & 1, ENC_BTN = (sr_val >> 3) & 1
- * @note Bu mapping DONANIM TESTI ile dogrulanmali. */
-#define SR_SW2_BIT       2
-#define SR_ENC_BTN_BIT   3
-#define SR_BUTTONS_MASK  0x0FFFu
+/* U29 H..A ilk okunur (sr_val[15:8]); U30 H..A sonra ([7:0]).
+ * TCS40DLR açık drençtir: algılamada LOW olur, pull-up idle HIGH verir.
+ * U29 A..H = keys 0..7, U30 A..D = keys 8..11, E=encoder, F=layer. */
+#define SR_SW2_BIT       5
+#define SR_ENC_BTN_BIT   4
+#define SR_KEY_ACTIVE_LOW 1
+
+static bool s_analog_powered;
+static bool s_brightness_key_was_pressed;
+static int16_t s_encoder_subdetent_counts;
+RTC_DATA_ATTR static bool s_critical_battery_latch;
 
 /** MAC string parse: "AA:BB:CC:DD:EE:FF" -> uint8_t[6]. */
 static void parse_mac(const char *str, uint8_t mac[6])
@@ -86,8 +89,10 @@ static esp_err_t init_subsystems(system_state_t *state)
         (mode_u8 <= POWER_MODE_AGGRESSIVE) ? (power_mode_t)mode_u8 : POWER_MODE_HYBRID;
     nvs_store_get_u8("brightness", CONFIG_BASE_BRIGHTNESS_DEFAULT,
                      &state->config.base_brightness);
+    if (state->config.base_brightness > 100) state->config.base_brightness = 100;
     nvs_store_get_u8("layer", CONFIG_ACTIVE_LAYER_DEFAULT,
                      &state->config.active_layer);
+    if (state->config.active_layer > 3) state->config.active_layer = 0;
 
     /* 2. SPI bus + cevresel */
     ESP_RETURN_ON_ERROR(spi_bus_init(PIN_SPI_SCK), TAG, "spi_bus");
@@ -121,7 +126,7 @@ static esp_err_t init_subsystems(system_state_t *state)
     state->link.is_connected_to_s3 = true;
     state->link.consecutive_failed_packets = 0;
     state->link.search_mode = false;
-    state->battery_dead = false;
+    state->battery_dead = s_critical_battery_latch;
     state->charging = false;
     state->charge_complete = false;
     state->inactivity_timer_ms = 0;
@@ -146,6 +151,7 @@ static bool step_charge_check(system_state_t *state)
             power_ctrl_led_power(false);
             state->charge_complete = false;
         }
+        state->charging = false;
         return false;
     }
 
@@ -161,6 +167,7 @@ static bool step_charge_check(system_state_t *state)
         state->charge_complete = true;
         charger_if_play_charge_complete_animation();
     }
+    vTaskDelay(pdMS_TO_TICKS(20)); /* Stub/charger polling de CPU'yu döndürmesin. */
     return true;  /* şarj modunda kal */
 }
 
@@ -177,6 +184,7 @@ static bool step_critical_battery(system_state_t *state)
     /* ESP-NOW + analog guc kapat */
     power_ctrl_analog_power(false);
     power_ctrl_led_power(false);
+    s_critical_battery_latch = true;
     wakeup_manager_deep_sleep();  /* donmez */
     return true;
 }
@@ -191,11 +199,7 @@ static void step_mode_change(system_state_t *state, bool sw2_pressed, int16_t en
     }
 
     int new_mode = (int)state->config.active_power_mode;
-    if (enc_delta > 0) {
-        new_mode++;
-    } else {
-        new_mode--;
-    }
+    new_mode += enc_delta;
     /* Sinirlar: 0-2 */
     if (new_mode < 0) new_mode = 0;
     if (new_mode > POWER_MODE_AGGRESSIVE) new_mode = POWER_MODE_AGGRESSIVE;
@@ -213,19 +217,28 @@ static void step_mode_change(system_state_t *state, bool sw2_pressed, int16_t en
 
 /**
  * @brief Bölüm 2.1.5: Tuş12 basili + encoder → parlaklik degisimi.
- * @note Tuş12 = digital_buttons bit11 (VARSAYIM, SR mapping'e bagli).
+ * @note Tuş12 = digital_buttons bit11 (U30 D girisi, aktif-LOW).
  */
 static void step_brightness_change(system_state_t *state,
                                    uint16_t digital_buttons,
                                    int16_t enc_delta)
 {
     bool key12_pressed = (digital_buttons & (1u << 11)) != 0;
-    if (!key12_pressed || enc_delta == 0) {
+    if (key12_pressed && enc_delta == 0) {
+        s_brightness_key_was_pressed = true;
         return;
     }
+    if (!key12_pressed) {
+        if (s_brightness_key_was_pressed) {
+            nvs_store_set_u8("brightness", state->config.base_brightness);
+            s_brightness_key_was_pressed = false;
+        }
+        return;
+    }
+    if (enc_delta == 0) return;
 
     int b = (int)state->config.base_brightness;
-    b += (enc_delta > 0) ? 5 : -5;  /* her adim %5 */
+    b += (int)enc_delta * 5;  /* encoder detent'i basina %5 */
     if (b < 0) b = 0;
     if (b > 100) b = 100;
 
@@ -238,10 +251,7 @@ static void step_brightness_change(system_state_t *state,
         neopixel_refresh();
         ESP_LOGI(TAG, "Parlaklik: %u%%", b);
     }
-    /* Tuş12 birakilinca: NVS kaydet + 2 sn sonra söndür (main döngüde yakalanmali) */
-    if (!key12_pressed) {
-        nvs_store_set_u8("brightness", state->config.base_brightness);
-    }
+    s_brightness_key_was_pressed = true;
 }
 
 /**
@@ -251,12 +261,24 @@ static void step_read_and_send(system_state_t *state)
 {
     /* 1. Dijital tuş + SW2 + ENC_BTN (shift register) */
     uint32_t sr_val = shift_in_sn74hc165_read();
-    uint16_t digital_buttons = (uint16_t)(sr_val & SR_BUTTONS_MASK);
+    uint16_t digital_buttons = 0;
+    static const uint8_t key_bits[12] = {8, 9, 10, 11, 0, 1, 2, 3, 4, 5, 6, 7};
+    for (int i = 0; i < 12; ++i) {
+        bool raw = (sr_val & (1u << key_bits[i])) != 0;
+        if (raw == (SR_KEY_ACTIVE_LOW == 0)) digital_buttons |= (uint16_t)(1u << i);
+    }
     bool sw2_pressed = (sr_val & (1u << SR_SW2_BIT)) != 0;
     bool enc_btn_pressed = (sr_val & (1u << SR_ENC_BTN_BIT)) != 0;
+    if (SR_KEY_ACTIVE_LOW) {
+        sw2_pressed = !sw2_pressed;
+        enc_btn_pressed = !enc_btn_pressed;
+    }
 
     /* 2. Encoder delta */
-    int16_t enc_delta = encoder_get_delta();
+    /* PCNT is 4x quadrature: accumulate partial edges and act once per detent. */
+    s_encoder_subdetent_counts += encoder_get_delta();
+    int16_t enc_delta = s_encoder_subdetent_counts / ENCODER_COUNTS_PER_DETENT;
+    s_encoder_subdetent_counts -= enc_delta * ENCODER_COUNTS_PER_DETENT;
 
     /* 3. Mod/parlaklik degisim kontrolü (Bölüm 2.1.4 + 2.1.5) */
     step_mode_change(state, sw2_pressed, enc_delta);
@@ -264,18 +286,30 @@ static void step_read_and_send(system_state_t *state)
 
     /* 4. Analog veri (sadece analog aktifken) */
     uint16_t analog[PACKET_ANALOG_CHANNELS] = {0};
-    bool analog_active = (state->config.active_power_mode == POWER_MODE_AGGRESSIVE) ||
-                         (state->config.active_power_mode == POWER_MODE_HYBRID);
-    if (analog_active && !espnow_link_is_search_mode()) {
-        power_ctrl_analog_power(true);
+    bool search_mode = espnow_link_is_search_mode();
+    bool analog_active = state->config.active_power_mode == POWER_MODE_AGGRESSIVE ||
+        (state->config.active_power_mode == POWER_MODE_HYBRID &&
+         (s_analog_powered || digital_buttons != 0));
+    if (state->config.active_power_mode == POWER_MODE_HYBRID && digital_buttons != 0) {
+        state->inactivity_timer_ms = 0;
+    }
+    if (analog_active && !search_mode) {
+        if (!s_analog_powered) {
+            power_ctrl_analog_power(true);
+            s_analog_powered = true;
+            /* Sensor rail and analog front-end settle after power-up. */
+            vTaskDelay(pdMS_TO_TICKS(5));
+        }
         for (int ch = 0; ch < PACKET_ANALOG_CHANNELS; ch++) {
             mux_cd74hc4067_select((uint8_t)ch);
             /* settle delay (~1us yeterli ama guvenli) */
             esp_rom_delay_us(2);
-            analog[ch] = mcp3202_read_channel(1);
+            analog[ch] = mcp3202_read_channel(CONFIG_MACROPAD_ADC_CHANNEL);
         }
     } else {
-        power_ctrl_analog_power(false);
+        if (s_analog_powered || search_mode) power_ctrl_analog_power(false);
+        s_analog_powered = false;
+        analog_active = false;
     }
 
     /* 5. system_status olustur */
@@ -290,7 +324,7 @@ static void step_read_and_send(system_state_t *state)
 
     /* 6. Paket olustur + gonder */
     uint8_t pkt[PACKET_SIZE_FULL];
-    if (analog_active && !espnow_link_is_search_mode()) {
+    if (analog_active && !search_mode) {
         packet_build_full(pkt, state->packet_counter, status,
                           digital_buttons, (int8_t)enc_delta, analog);
         espnow_link_send(pkt, PACKET_SIZE_FULL);
@@ -312,16 +346,27 @@ static void step_read_and_send(system_state_t *state)
  */
 static void step_battery_periodic(system_state_t *state, uint32_t now_ms)
 {
+#if !CONFIG_BATTERY_ADC_CALIBRATED || (CONFIG_BATTERY_ADC_FULL_RAW <= CONFIG_BATTERY_ADC_EMPTY_RAW)
+    (void)state;
+    (void)now_ms;
+    return; /* Uncalibrated ADC must never cause a false critical-battery lock. */
+#else
     static uint32_t last_measure_ms = 0;
     if ((now_ms - last_measure_ms) < CONFIG_BATTERY_MEASURE_PERIOD_MS) {
         return;
     }
     last_measure_ms = now_ms;
 
-    /* Pil voltajı: mux kanal 12 + ADC */
+    /* Pil voltaji: sensor rayi gerekliyse kisa sure ac, olc ve kapat. */
+    bool was_powered = s_analog_powered;
+    if (!was_powered) {
+        power_ctrl_analog_power(true);
+        s_analog_powered = true;
+        vTaskDelay(pdMS_TO_TICKS(5));
+    }
     mux_cd74hc4067_select(MUX_CHANNEL_BATTERY);
     esp_rom_delay_us(2);
-    uint16_t adc_raw = mcp3202_read_channel(1);
+    uint16_t adc_raw = mcp3202_read_channel(CONFIG_MACROPAD_ADC_CHANNEL);
     uint8_t percent = battery_adc_to_percent(adc_raw);
 
     ESP_LOGI(TAG, "Pil: %u%% (adc=%u)", percent, adc_raw);
@@ -329,6 +374,11 @@ static void step_battery_periodic(system_state_t *state, uint32_t now_ms)
         /* battery_dead set edildi */
         ESP_LOGW(TAG, "Kritik pil! deep sleep hazirlaniyor");
     }
+    if (!was_powered) {
+        power_ctrl_analog_power(false);
+        s_analog_powered = false;
+    }
+#endif
 }
 
 /**
@@ -358,11 +408,13 @@ static void step_power_sleep(system_state_t *state)
     /* Hibrit mod: inaktivite varsa light sleep, yoksa 1 kHz */
     if (state->inactivity_timer_ms >= CONFIG_HYBRID_INACTIVITY_TIMEOUT_MS) {
         power_ctrl_analog_power(false);
+        s_analog_powered = false;
         wakeup_manager_light_sleep(CONFIG_WAKEUP_POLL_PERIOD_MS);
         state->inactivity_timer_ms = 0;
     } else {
         vTaskDelay(pdMS_TO_TICKS(1));  /* 1 kHz */
-        state->inactivity_timer_ms += 1;
+        if (s_analog_powered) state->inactivity_timer_ms += 1;
+        else wakeup_manager_light_sleep(CONFIG_WAKEUP_POLL_PERIOD_MS);
     }
 }
 
@@ -379,13 +431,28 @@ void app_main(void)
 
     /* Deep sleep'ten uyanma kontrolü (Bölüm 4.4 kritik kilitle) */
     if (wakeup_manager_woken_by_gpio() && state.battery_dead) {
-        ESP_LOGW(TAG, "Kritik kilitle uyanildi: layer LED 5 sn blink");
-        power_ctrl_led_power(true);
-        battery_blink_layer(state.config.active_layer);
-        vTaskDelay(pdMS_TO_TICKS(5000));
-        power_ctrl_led_power(false);
-        wakeup_manager_deep_sleep();  /* tekrar deep sleep */
-        return;
+#if CONFIG_BATTERY_ADC_CALIBRATED && (CONFIG_BATTERY_ADC_FULL_RAW > CONFIG_BATTERY_ADC_EMPTY_RAW)
+        power_ctrl_analog_power(true);
+        vTaskDelay(pdMS_TO_TICKS(5));
+        mux_cd74hc4067_select(MUX_CHANNEL_BATTERY);
+        esp_rom_delay_us(2);
+        uint16_t recovery_adc = mcp3202_read_channel(CONFIG_MACROPAD_ADC_CHANNEL);
+        power_ctrl_analog_power(false);
+        if (battery_adc_to_percent(recovery_adc) > 5) {
+            ESP_LOGI(TAG, "Pil guvenli seviyeye sarj olmus; kritik kilit kalkiyor");
+            state.battery_dead = false;
+            s_critical_battery_latch = false;
+        } else
+#endif
+        {
+            ESP_LOGW(TAG, "Kritik pil kilidi: katman LED'iyle uyari");
+            power_ctrl_led_power(true);
+            battery_blink_layer(state.config.active_layer);
+            vTaskDelay(pdMS_TO_TICKS(5000));
+            power_ctrl_led_power(false);
+            wakeup_manager_deep_sleep();
+            return;
+        }
     }
 
     ESP_LOGI(TAG, "Ana döngü basliyor (Bölüm 2)");
@@ -411,6 +478,11 @@ void app_main(void)
 
         /* 7. Pil ölçüm (Bölüm 4.4, 10 sn) */
         step_battery_periodic(&state, now_ms);
+
+        /* Sleep on critical battery only after the new measurement is handled. */
+        if (step_critical_battery(&state)) {
+            break;
+        }
 
         /* 8. Güç modu sleep (Bölüm 4.1/4.2) */
         step_power_sleep(&state);

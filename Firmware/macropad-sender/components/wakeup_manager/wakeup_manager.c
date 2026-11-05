@@ -111,9 +111,9 @@ void wakeup_manager_deep_sleep(void)
 
 bool wakeup_manager_woken_by_gpio(void)
 {
-    /* ESP-IDF v6: esp_sleep_get_wakeup_cause deprecated, esp_sleep_get_wakeup_causes
-       bitmask doner. Herhangi bir wakeup cause varsa true (GPIO veya timer).
-       Ayrim main.c tarafindan polling ile yapilir (sensör oku her uyanista). */
+    /* esp_sleep_get_wakeup_causes returns a bit per enum cause. */
     uint32_t causes = esp_sleep_get_wakeup_causes();
-    return (causes != 0u);
+    return (causes & ((1u << ESP_SLEEP_WAKEUP_GPIO) |
+                      (1u << ESP_SLEEP_WAKEUP_EXT1) |
+                      (1u << ESP_SLEEP_WAKEUP_EXT0))) != 0;
 }

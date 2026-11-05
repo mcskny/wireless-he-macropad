@@ -15,8 +15,7 @@
  *   - {"cmd":"stop_adc"} → ADC akisi durur
  *   - {"cmd":"exit"} → CONFIG_AP_MODE'dan cik, NORMAL_MODE
  *
- * @note STUB: WebSocket handler simdilik basit. Tam JSON parse + kalibrasyon
- *       yazma F5 sonrasi veya ayri fazda. esp_http_server httpd_ws kullanilir.
+ * Kalibrasyon alanlari ve makro tanimi JSON ile okunup NVS'e kaydedilir.
  */
 #pragma once
 
@@ -36,6 +35,9 @@ extern "C" {
  * @param channel  Wi-Fi kanali.
  * @return ESP_OK veya hata.
  */
+/** Kalibrasyon yapisini WebSocket handler'ina baglar. AP modu boyunca gecerli olmalidir. */
+void config_ap_bind_calibration(calibration_config_t *calibration);
+
 esp_err_t config_ap_start(const char *ssid, const char *password, uint8_t channel);
 
 /**

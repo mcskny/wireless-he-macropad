@@ -62,6 +62,9 @@ bool macro_engine_tick(uint32_t now_ms);
  */
 bool macro_engine_is_running(void);
 
+/** O an gonderilmesi gereken keycode; 0 makro tusu birakilmistir. */
+uint16_t macro_engine_current_keycode(void);
+
 /**
  * @brief Makroyu durdur (tum tuşlari birak).
  */

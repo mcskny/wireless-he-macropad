@@ -30,6 +30,7 @@ static volatile uint32_t s_packets_received = 0;
 static volatile uint32_t s_packets_filtered = 0;
 
 static bool s_initialized = false;
+static bool s_suspended = false;
 
 /**
  * @brief ESP-NOW RX callback (wifi task context).
@@ -114,6 +115,34 @@ esp_err_t espnow_rx_init(const uint8_t c6_mac[6], uint8_t channel)
     ESP_LOGI(TAG, "ESP-NOW RX baslatildi: C6=%02X:%02X:%02X:%02X:%02X:%02X ch=%u",
              s_c6_mac[0], s_c6_mac[1], s_c6_mac[2],
              s_c6_mac[3], s_c6_mac[4], s_c6_mac[5], channel);
+    return ESP_OK;
+}
+
+esp_err_t espnow_rx_suspend(void)
+{
+    if (!s_initialized || s_suspended) return ESP_ERR_INVALID_STATE;
+    esp_err_t ret = esp_now_unregister_recv_cb();
+    if (ret != ESP_OK) return ret;
+    ret = esp_now_deinit();
+    if (ret != ESP_OK) return ret;
+    if (s_queue != NULL) xQueueReset(s_queue);
+    s_suspended = true;
+    return ESP_OK;
+}
+
+esp_err_t espnow_rx_resume(uint8_t channel)
+{
+    if (!s_initialized) return ESP_ERR_INVALID_STATE;
+    if (!s_suspended) return ESP_OK;
+    esp_err_t ret = esp_wifi_set_channel(channel, WIFI_SECOND_CHAN_NONE);
+    if (ret != ESP_OK) return ret;
+    ret = esp_now_init();
+    if (ret != ESP_OK) return ret;
+    ret = esp_now_register_recv_cb(espnow_rx_callback);
+    if (ret != ESP_OK) { esp_now_deinit(); return ret; }
+    if (s_queue != NULL) xQueueReset(s_queue);
+    s_suspended = false;
+    ESP_LOGI(TAG, "ESP-NOW RX yeniden baslatildi (kanal=%u)", channel);
     return ESP_OK;
 }
 

@@ -18,6 +18,10 @@
 #include "config_ap.h"
 
 #include <string.h>
+#include <stdlib.h>
+#include <math.h>
+#include "cJSON.h"
+#include "nvs_store.h"
 #include "esp_log.h"
 #include "esp_wifi.h"
 #include "esp_event.h"
@@ -32,6 +36,8 @@ static bool s_active = false;
 static bool s_exit_requested = false;
 static int s_ws_client_fd = -1;
 static bool s_adc_stream = false;
+static calibration_config_t *s_calibration = NULL;
+#define WS_MAX_JSON_SIZE 4096
 
 /* CMake EMBED_FILES "web/index.html" ile eklenen binary pointer'lar */
 extern const uint8_t index_html_start[] asm("_binary_index_html_start");
@@ -40,6 +46,111 @@ extern const uint8_t index_html_end[]   asm("_binary_index_html_end");
 /**
  * @brief 192.168.4.1/ (kök dizin) isteği geldiğinde gömülü HTML sayfasını sunar.
  */
+
+void config_ap_bind_calibration(calibration_config_t *calibration)
+{
+    s_calibration = calibration;
+}
+
+/* value_type: 0=float, 1=uint16, 2=uint8, 3=enum/int */
+static cJSON *number_array(const void *values, size_t count, int value_type)
+{
+    cJSON *array = cJSON_CreateArray();
+    if (array == NULL) return NULL;
+    for (size_t i = 0; i < count; ++i) {
+        double value = value_type == 0 ? ((const float *)values)[i] :
+            value_type == 1 ? ((const uint16_t *)values)[i] :
+            value_type == 2 ? ((const uint8_t *)values)[i] : ((const int *)values)[i];
+        cJSON_AddItemToArray(array, cJSON_CreateNumber(value));
+    }
+    return array;
+}
+
+static bool set_array(cJSON *root, const char *name, void *out, size_t count,
+                      int value_type, double min_value, double max_value)
+{
+    cJSON *array = cJSON_GetObjectItemCaseSensitive(root, name);
+    if (array == NULL) return true;
+    if (!cJSON_IsArray(array) || cJSON_GetArraySize(array) != (int)count) return false;
+    for (size_t i = 0; i < count; ++i) {
+        cJSON *item = cJSON_GetArrayItem(array, (int)i);
+        if (!cJSON_IsNumber(item) || !isfinite(item->valuedouble) || item->valuedouble < min_value || item->valuedouble > max_value ||
+            (value_type != 0 && floor(item->valuedouble) != item->valuedouble)) return false;
+        if (value_type == 0) ((float *)out)[i] = (float)item->valuedouble;
+        else if (value_type == 1) ((uint16_t *)out)[i] = (uint16_t)item->valuedouble;
+        else if (value_type == 2) ((uint8_t *)out)[i] = (uint8_t)item->valuedouble;
+        else ((int *)out)[i] = (int)item->valuedouble;
+    }
+    return true;
+}
+
+static char *calibration_json(const calibration_config_t *cal)
+{
+    cJSON *root = cJSON_CreateObject();
+    if (root == NULL) return NULL;
+    cJSON_AddItemToObject(root, "min_adc", number_array(cal->min_adc, S3_KEY_COUNT, 1));
+    cJSON_AddItemToObject(root, "max_adc", number_array(cal->max_adc, S3_KEY_COUNT, 1));
+    cJSON_AddItemToObject(root, "actuation_point", number_array(cal->actuation_point, S3_KEY_COUNT, 0));
+    cJSON_AddItemToObject(root, "rt_press_sensitivity", number_array(cal->rt_press_sensitivity, S3_KEY_COUNT, 0));
+    cJSON_AddItemToObject(root, "rt_release_sensitivity", number_array(cal->rt_release_sensitivity, S3_KEY_COUNT, 0));
+    cJSON_AddItemToObject(root, "trigger_mode", number_array(cal->trigger_mode, S3_KEY_COUNT, 3));
+    cJSON_AddItemToObject(root, "key_mappings", number_array(&cal->key_mappings[0][0], S3_LAYER_COUNT * S3_KEY_COUNT, 1));
+    cJSON_AddItemToObject(root, "snap_tap_pairs", number_array(cal->snap_tap_pairs, S3_SNAP_TAP_PAIR_MAX, 2));
+    cJSON_AddItemToObject(root, "joystick_axes", number_array(cal->joystick_axes, S3_JOYSTICK_AXIS_COUNT, 2));
+    cJSON_AddNumberToObject(root, "macro_trigger_key", cal->macro_trigger_key);
+    cJSON *steps = cJSON_AddArrayToObject(root, "macro_steps");
+    for (uint8_t i = 0; steps && i < cal->macro_step_count && i < S3_MACRO_MAX_STEPS; ++i) {
+        cJSON *pair = cJSON_CreateArray();
+        cJSON_AddItemToArray(pair, cJSON_CreateNumber(cal->macro_steps[i].keycode));
+        cJSON_AddItemToArray(pair, cJSON_CreateNumber(cal->macro_steps[i].delay_ms));
+        cJSON_AddItemToArray(steps, pair);
+    }
+    char *out = cJSON_PrintUnformatted(root);
+    cJSON_Delete(root);
+    return out;
+}
+
+static bool apply_calibration_json(cJSON *data)
+{
+    if (s_calibration == NULL || !cJSON_IsObject(data)) return false;
+    calibration_config_t candidate = *s_calibration;
+    if (!set_array(data, "min_adc", candidate.min_adc, S3_KEY_COUNT, 1, 0, 4095) ||
+        !set_array(data, "max_adc", candidate.max_adc, S3_KEY_COUNT, 1, 0, 4095) ||
+        !set_array(data, "actuation_point", candidate.actuation_point, S3_KEY_COUNT, 0, 0.01, 1.0) ||
+        !set_array(data, "rt_press_sensitivity", candidate.rt_press_sensitivity, S3_KEY_COUNT, 0, 0.001, 1.0) ||
+        !set_array(data, "rt_release_sensitivity", candidate.rt_release_sensitivity, S3_KEY_COUNT, 0, 0.001, 1.0) ||
+        !set_array(data, "trigger_mode", candidate.trigger_mode, S3_KEY_COUNT, 3, 0, 1) ||
+        !set_array(data, "key_mappings", &candidate.key_mappings[0][0], S3_LAYER_COUNT * S3_KEY_COUNT, 1, 0, 0x1FF) ||
+        !set_array(data, "snap_tap_pairs", candidate.snap_tap_pairs, S3_SNAP_TAP_PAIR_MAX, 2, 0, 255) ||
+        !set_array(data, "joystick_axes", candidate.joystick_axes, S3_JOYSTICK_AXIS_COUNT, 2, 0, 255)) return false;
+    for (int i = 0; i < S3_KEY_COUNT; ++i) if (candidate.max_adc[i] <= candidate.min_adc[i]) return false;
+    cJSON *trigger = cJSON_GetObjectItemCaseSensitive(data, "macro_trigger_key");
+    if (trigger) {
+        if (!cJSON_IsNumber(trigger) || floor(trigger->valuedouble) != trigger->valuedouble ||
+            !((trigger->valueint >= 0 && trigger->valueint < S3_KEY_COUNT) || trigger->valueint == 255)) return false;
+        candidate.macro_trigger_key = (uint8_t)trigger->valueint;
+    }
+    cJSON *steps = cJSON_GetObjectItemCaseSensitive(data, "macro_steps");
+    if (steps) {
+        if (!cJSON_IsArray(steps) || cJSON_GetArraySize(steps) > S3_MACRO_MAX_STEPS) return false;
+        uint8_t count = (uint8_t)cJSON_GetArraySize(steps);
+        for (uint8_t i = 0; i < count; ++i) {
+            cJSON *pair = cJSON_GetArrayItem(steps, i);
+            cJSON *key = cJSON_GetArrayItem(pair, 0);
+            cJSON *delay = cJSON_GetArrayItem(pair, 1);
+            if (!cJSON_IsArray(pair) || cJSON_GetArraySize(pair) != 2 || !cJSON_IsNumber(key) || !cJSON_IsNumber(delay) ||
+                key->valueint < 0 || key->valueint > 0x1FF || floor(key->valuedouble) != key->valuedouble ||
+                delay->valueint < 0 || delay->valueint > 5000 || floor(delay->valuedouble) != delay->valuedouble) return false;
+            candidate.macro_steps[i].keycode = (uint16_t)key->valueint;
+            candidate.macro_steps[i].delay_ms = (uint16_t)delay->valueint;
+        }
+        candidate.macro_step_count = count;
+    }
+    if (nvs_store_save_calibration(&candidate) != ESP_OK) return false;
+    *s_calibration = candidate;
+    return true;
+}
+
 static esp_err_t root_html_handler(httpd_req_t *req)
 {
     httpd_resp_set_type(req, "text/html");
@@ -76,40 +187,48 @@ static esp_err_t ws_handler(httpd_req_t *req)
         return ESP_OK;
     }
 
-    if (ws_pkt.len >= 128) {
+    if (ws_pkt.len > WS_MAX_JSON_SIZE) {
         ESP_LOGW(TAG, "Frame cok buyuk (%u byte), yoksayiliyor", (unsigned)ws_pkt.len);
-        return ESP_OK;
+        return ESP_ERR_INVALID_SIZE;
     }
-
-    /* 2. adim: gercek payload'i oku */
-    uint8_t buf[128] = {0};
+    uint8_t *buf = calloc(1, ws_pkt.len + 1);
+    if (buf == NULL) return ESP_ERR_NO_MEM;
     ws_pkt.payload = buf;
     ret = httpd_ws_recv_frame(req, &ws_pkt, ws_pkt.len);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "ws_recv_frame (payload) hatasi: %s", esp_err_to_name(ret));
-        return ret;
-    }
+    if (ret != ESP_OK) { free(buf); return ret; }
 
     ESP_LOGI(TAG, "WS recv (%u byte): %.*s", (unsigned)ws_pkt.len,
              (int)ws_pkt.len, (char *)ws_pkt.payload);
 
-    /* Komut parse (basit string arama) */
-    const char *resp = "OK";
-    if (strstr((char *)ws_pkt.payload, "exit") != NULL) {
-        s_exit_requested = true;
-        resp = "exit_ack";
-        ESP_LOGI(TAG, "Cikis komutu alindi");
-    } else if (strstr((char *)ws_pkt.payload, "get_adc") != NULL) {
-        s_adc_stream = true;
-        resp = "adc_start";
-    } else if (strstr((char *)ws_pkt.payload, "stop_adc") != NULL) {
-        s_adc_stream = false;
-        resp = "adc_stop";
-    } else if (strstr((char *)ws_pkt.payload, "get_calib") != NULL) {
-        resp = "calib_todo";  /* TODO: JSON kalibrasyon */
+    char *resp = NULL;
+    cJSON *request = cJSON_Parse((const char *)buf);
+    cJSON *cmd_item = request ? cJSON_GetObjectItemCaseSensitive(request, "cmd") : NULL;
+    const char *cmd = cJSON_IsString(cmd_item) ? cmd_item->valuestring : (const char *)buf;
+    if (strcmp(cmd, "exit") == 0) {
+        s_exit_requested = true; resp = strdup("{\"cmd\":\"exit_ack\"}");
+    } else if (strcmp(cmd, "get_adc") == 0) {
+        s_adc_stream = true; resp = strdup("{\"cmd\":\"adc_start\"}");
+    } else if (strcmp(cmd, "stop_adc") == 0) {
+        s_adc_stream = false; resp = strdup("{\"cmd\":\"adc_stop\"}");
+    } else if (strcmp(cmd, "get_calib") == 0) {
+        char *data = s_calibration ? calibration_json(s_calibration) : NULL;
+        cJSON *reply = cJSON_CreateObject();
+        if (reply && data) {
+            cJSON_AddStringToObject(reply, "cmd", "calib");
+            cJSON_AddRawToObject(reply, "data", data);
+            resp = cJSON_PrintUnformatted(reply);
+        }
+        free(data); cJSON_Delete(reply);
+    } else if (strcmp(cmd, "set_calib") == 0) {
+        cJSON *data = cJSON_GetObjectItemCaseSensitive(request, "data");
+        bool ok = apply_calibration_json(data);
+        resp = strdup(ok ? "{\"cmd\":\"set_calib_ack\"}" : "{\"cmd\":\"error\",\"message\":\"invalid_calibration\"}");
     } else {
-        resp = "unknown_cmd";
+        resp = strdup("{\"cmd\":\"unknown_cmd\"}");
     }
+    cJSON_Delete(request);
+    free(buf);
+    if (resp == NULL) return ESP_ERR_NO_MEM;
 
     /* Response gonder */
     httpd_ws_frame_t resp_pkt;
@@ -117,9 +236,9 @@ static esp_err_t ws_handler(httpd_req_t *req)
     resp_pkt.type = HTTPD_WS_TYPE_TEXT;
     resp_pkt.payload = (uint8_t *)resp;
     resp_pkt.len = strlen(resp);
-    httpd_ws_send_frame(req, &resp_pkt);
-
-    return ESP_OK;
+    ret = httpd_ws_send_frame(req, &resp_pkt);
+    free(resp);
+    return ret;
 }
 
 esp_err_t config_ap_start(const char *ssid, const char *password, uint8_t channel)

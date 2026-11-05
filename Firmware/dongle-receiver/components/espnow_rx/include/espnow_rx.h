@@ -49,6 +49,12 @@ typedef struct {
  */
 esp_err_t espnow_rx_init(const uint8_t c6_mac[6], uint8_t channel);
 
+/** Wi-Fi AP moduna geçmeden ESP-NOW callback'ini ve yığındaki eski paketleri kapatır. */
+esp_err_t espnow_rx_suspend(void);
+
+/** Wi-Fi STA olarak yeniden açıldıktan sonra ESP-NOW alımını tekrar başlatır. */
+esp_err_t espnow_rx_resume(uint8_t channel);
+
 /**
  * @brief Queue'dan paket alir (blocking veya timeout).
  * @param out        Cikis paket bufferi.

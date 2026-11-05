@@ -26,3 +26,13 @@ __pycache__/
 .history/
 ~macropad.kicad_pro.lck
 ~macropad.kicad_pcb.lck
+# Local flash backups may contain pairing keys and device settings
+backups/
+
+# Generated outputs and local runtime data
+**/build-*/
+**/logs/
+**/*.app/
+**/*.bak
+**/.history/
+output/mac/

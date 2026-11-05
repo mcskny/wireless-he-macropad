@@ -22,12 +22,14 @@ static const char *TAG = "hall";
 #define HALL_RT_MAX_DEFAULT      1.0f
 
 static bool s_initialized = false;
+static int8_t s_last_active_pair[S3_SNAP_TAP_PAIR_MAX / 2];
 
 esp_err_t hall_engine_init(void)
 {
     if (s_initialized) {
         return ESP_OK;
     }
+    memset(s_last_active_pair, -1, sizeof(s_last_active_pair));
     s_initialized = true;
     ESP_LOGI(TAG, "Hall Effect motoru baslatildi");
     return ESP_OK;
@@ -42,7 +44,7 @@ static float hall_normalize(uint16_t adc, uint16_t min_adc, uint16_t max_adc)
     if (max_adc <= min_adc) {
         return 0.0f;  /* gecersiz kalibrasyon */
     }
-    float pos = (float)(adc - min_adc) / (float)(max_adc - min_adc);
+    float pos = ((float)adc - (float)min_adc) / ((float)max_adc - (float)min_adc);
     if (pos < 0.0f) pos = 0.0f;
     if (pos > 1.0f) pos = 1.0f;
     return pos;
@@ -182,9 +184,10 @@ static void hall_compute_joystick(const key_state_t keys[S3_KEY_COUNT],
 }
 
 /** Snap Tap icin son aktif tuş takibi (her çift için). */
-static int8_t s_last_active_pair[S3_SNAP_TAP_PAIR_MAX / 2] = {0};
+static int8_t s_last_active_pair[S3_SNAP_TAP_PAIR_MAX / 2];
 
 void hall_engine_process(const uint16_t analog[S3_KEY_COUNT],
+                         uint16_t digital_buttons,
                          const calibration_config_t *cal,
                          key_state_t keys[S3_KEY_COUNT],
                          bool active_keys[S3_KEY_COUNT],
@@ -216,7 +219,7 @@ void hall_engine_process(const uint16_t analog[S3_KEY_COUNT],
                 keys[i].pressed);
         }
 
-        active_keys[i] = keys[i].pressed;
+        active_keys[i] = keys[i].pressed || ((digital_buttons & (1u << i)) != 0);
     }
 
     /* 4.3 Snap Tap çözümleme */
@@ -226,6 +229,16 @@ void hall_engine_process(const uint16_t analog[S3_KEY_COUNT],
     if (joy_x != NULL && joy_y != NULL) {
         hall_compute_joystick(keys, cal->joystick_axes, joy_x, joy_y);
     }
+}
+
+void hall_engine_process_digital(uint16_t digital_buttons,
+                                 const calibration_config_t *cal,
+                                 bool active_keys[S3_KEY_COUNT])
+{
+    if (cal == NULL || active_keys == NULL) return;
+    for (int i = 0; i < S3_KEY_COUNT; ++i)
+        active_keys[i] = (digital_buttons & (1u << i)) != 0;
+    hall_resolve_snap_tap(active_keys, cal->snap_tap_pairs, s_last_active_pair);
 }
 
 void hall_engine_release_all(key_state_t keys[S3_KEY_COUNT],

@@ -11,8 +11,8 @@
  * Resume:
  *   - 1000Hz tam güç moduna dön
  *
- * @note STUB: TinyUSB suspend/resume callback'leri F3 (TinyUSB entegrasyonu)
- *       sonrasi baglanacak. Su an sadece flag + log.
+ * @note Su an suspend durumunu takip eder; ESP-NOW alimi devam eder ve HID
+ *       raporlari TinyUSB suspend durumunda usb_hid tarafindan bastirilir.
  */
 #pragma once
 
@@ -30,13 +30,13 @@ esp_err_t usb_power_init(void);
 
 /**
  * @brief USB suspend algilandi (Bölüm 6.3).
- * TinyUSB tud_suspend_cb cagiracak (F3 sonrasi).
+ * TinyUSB suspend durumu algilandiginda main dongusu tarafindan cagrilir.
  */
 void usb_power_on_suspend(void);
 
 /**
  * @brief USB resume algilandi (Bölüm 6.3).
- * TinyUSB tud_resume_cb cagiracak (F3 sonrasi).
+ * TinyUSB resume durumu algilandiginda main dongusu tarafindan cagrilir.
  */
 void usb_power_on_resume(void);
 

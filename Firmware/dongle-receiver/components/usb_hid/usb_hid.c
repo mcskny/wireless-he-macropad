@@ -73,6 +73,7 @@ static bool s_suspended = false;
 /** Onceki raporlar (degisim tespiti icin, Bölüm 6.1). */
 static uint8_t s_prev_keycode[6] = {0};
 static uint8_t s_prev_modifier = 0;
+static uint16_t s_prev_consumer_usage = 0;
 static int16_t s_prev_joy_x = 0;
 static int16_t s_prev_joy_y = 0;
 
@@ -142,6 +143,7 @@ esp_err_t usb_hid_init(void)
 
     memset(s_prev_keycode, 0, sizeof(s_prev_keycode));
     s_prev_modifier = 0;
+    s_prev_consumer_usage = 0;
     s_prev_joy_x = 0;
     s_prev_joy_y = 0;
     s_suspended = false;
@@ -169,32 +171,70 @@ esp_err_t usb_hid_send_keyboard(const bool active_keys[12],
     uint8_t keycode[6] = {0};
     uint8_t modifier = 0;
     uint8_t count = 0;
+    uint16_t consumer_usage = 0;
 
-    for (int i = 0; i < 12 && count < 6; i++) {
+    for (int i = 0; i < 12; i++) {
         if (active_keys[i]) {
             uint16_t code = key_mappings[layer][i];
             if (code == 0) continue;
 
-            /* Modifier keycode'lari (0x22-0x29: Ctrl/Shift/Alt/GUI) ayikla */
-            if (code >= 0x22 && code <= 0x29 && code != 0) {
-                modifier |= (1u << (code - 0x22));
-            } else if (code >= 0x04 && code <= 0xA4) {
+            /* Consumer usages use 0x0100 | usage (e.g. 0x01E9 = volume up). */
+            if (code >= 0x0100 && code <= 0x01FF) {
+                consumer_usage = (uint16_t)(code & 0xFF);
+            } else if (code >= 0xE0 && code <= 0xE7) {
+                modifier |= (1u << (code - 0xE0));
+            } else if (code >= 0x04 && code <= 0xA4 && count < 6) {
                 keycode[count++] = (uint8_t)code;
             }
         }
     }
 
-    /* Degisim kontrolu (Bölüm 6.1: sadece degisimde gonder) */
-    if (memcmp(keycode, s_prev_keycode, 6) == 0 && modifier == s_prev_modifier) {
-        return ESP_OK;  /* durum ayni, gonderme */
+    /* Do not re-send an unchanged keyboard report before a pending consumer
+       report: both share one endpoint and the redundant packet can starve it. */
+    if (memcmp(keycode, s_prev_keycode, 6) != 0 || modifier != s_prev_modifier) {
+        if (!tud_hid_keyboard_report(HID_REPORT_ID_KEYBOARD, modifier, keycode)) {
+            return ESP_FAIL;
+        }
+        memcpy(s_prev_keycode, keycode, 6);
+        s_prev_modifier = modifier;
     }
-    memcpy(s_prev_keycode, keycode, 6);
-    s_prev_modifier = modifier;
+    if (consumer_usage != s_prev_consumer_usage) {
+        struct __attribute__((packed)) { uint16_t usage; } report = { consumer_usage };
+        if (tud_hid_report(HID_REPORT_ID_CONSUMER, &report, sizeof(report)))
+            s_prev_consumer_usage = consumer_usage;
+    }
+    return ESP_OK;
+}
 
-    /* TinyUSB keyboard report (report ID 1) */
-    if (!tud_hid_keyboard_report(HID_REPORT_ID_KEYBOARD, modifier, keycode)) {
-        return ESP_FAIL;
+esp_err_t usb_hid_send_keycode(uint16_t code)
+{
+    if (!tud_mounted() || s_suspended) return ESP_ERR_INVALID_STATE;
+    uint8_t keys[6] = {0};
+    uint8_t modifier = 0;
+    if (code >= 0x0100 && code <= 0x01FF) {
+        uint16_t usage = (uint16_t)(code & 0xFF);
+        if (usage == s_prev_consumer_usage) return ESP_OK;
+        if (s_prev_modifier || memcmp(s_prev_keycode, keys, sizeof(keys)) != 0) {
+            if (!tud_hid_keyboard_report(HID_REPORT_ID_KEYBOARD, 0, NULL)) return ESP_FAIL;
+            memset(s_prev_keycode, 0, sizeof(s_prev_keycode));
+            s_prev_modifier = 0;
+        }
+        struct __attribute__((packed)) { uint16_t usage; } report = { usage };
+        if (!tud_hid_report(HID_REPORT_ID_CONSUMER, &report, sizeof(report))) return ESP_FAIL;
+        s_prev_consumer_usage = usage;
+        return ESP_OK;
     }
+    if (code >= 0xE0 && code <= 0xE7) modifier = (uint8_t)(1u << (code - 0xE0));
+    else if (code >= 0x04 && code <= 0xA4) keys[0] = (uint8_t)code;
+    if (memcmp(keys, s_prev_keycode, sizeof(keys)) == 0 && modifier == s_prev_modifier) return ESP_OK;
+    if (!tud_hid_keyboard_report(HID_REPORT_ID_KEYBOARD, modifier, keys)) return ESP_FAIL;
+    if (s_prev_consumer_usage != 0) {
+        struct __attribute__((packed)) { uint16_t usage; } report = { 0 };
+        if (!tud_hid_report(HID_REPORT_ID_CONSUMER, &report, sizeof(report))) return ESP_FAIL;
+        s_prev_consumer_usage = 0;
+    }
+    memcpy(s_prev_keycode, keys, sizeof(keys));
+    s_prev_modifier = modifier;
     return ESP_OK;
 }
 
@@ -208,9 +248,6 @@ esp_err_t usb_hid_send_gamepad(int16_t joy_x, int16_t joy_y)
     if (joy_x == s_prev_joy_x && joy_y == s_prev_joy_y) {
         return ESP_OK;
     }
-    s_prev_joy_x = joy_x;
-    s_prev_joy_y = joy_y;
-
     /* Gamepad report: X/Y int8 (-128..127), joystick 16-bit'i 8'e indir.
        Generic tud_hid_report kullanilir (tud_hid_gamepad_report link hatasi veriyor). */
     struct TU_ATTR_PACKED {
@@ -225,6 +262,8 @@ esp_err_t usb_hid_send_gamepad(int16_t joy_x, int16_t joy_y)
     if (!tud_hid_report(HID_REPORT_ID_GAMEPAD, &gp_report, sizeof(gp_report))) {
         return ESP_FAIL;
     }
+    s_prev_joy_x = joy_x;
+    s_prev_joy_y = joy_y;
     return ESP_OK;
 }
 
@@ -260,22 +299,30 @@ esp_err_t usb_hid_release_all(void)
     if (s_prev_modifier != 0) any = true;
 
     if (any) {
-        memset(s_prev_keycode, 0, 6);
-        s_prev_modifier = 0;
-        tud_hid_keyboard_report(HID_REPORT_ID_KEYBOARD, 0, NULL);
-        ESP_LOGW(TAG, "Tum tuþlar birakildi (watchdog timeout)");
+        /* Retain the previous state when the endpoint is busy so the next
+           watchdog tick retries the release instead of leaving a stuck key. */
+        if (tud_hid_keyboard_report(HID_REPORT_ID_KEYBOARD, 0, NULL)) {
+            memset(s_prev_keycode, 0, 6);
+            s_prev_modifier = 0;
+            ESP_LOGW(TAG, "All keyboard keys released after watchdog timeout");
+        }
     }
 
+    if (s_prev_consumer_usage != 0) {
+        struct __attribute__((packed)) { uint16_t usage; } report = { 0 };
+        if (tud_hid_report(HID_REPORT_ID_CONSUMER, &report, sizeof(report))) s_prev_consumer_usage = 0;
+    }
     if (s_prev_joy_x != 0 || s_prev_joy_y != 0) {
-        s_prev_joy_x = 0;
-        s_prev_joy_y = 0;
         struct TU_ATTR_PACKED {
             int8_t x, y, z, rz, rx, ry;
             uint8_t hat;
             uint32_t buttons;
         } gp_report;
         memset(&gp_report, 0, sizeof(gp_report));
-        tud_hid_report(HID_REPORT_ID_GAMEPAD, &gp_report, sizeof(gp_report));
+        if (tud_hid_report(HID_REPORT_ID_GAMEPAD, &gp_report, sizeof(gp_report))) {
+            s_prev_joy_x = 0;
+            s_prev_joy_y = 0;
+        }
     }
     return ESP_OK;
 }

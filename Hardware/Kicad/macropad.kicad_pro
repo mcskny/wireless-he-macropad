@@ -556,6 +556,7 @@
       "netlist": "",
       "plot": "/home/bain/Masaüstü/gerber/",
       "specctra_dsn": "",
+      "step": "",
       "vrml": ""
     },
     "page_layout_descr_file": ""
@@ -798,7 +799,7 @@
         "uuid": "17e0126d-7829-476a-b0a9-cd5782b0181c"
       }
     ],
-    "used_designators": "MX1-12,D1-29,L2-4,R6-31,R34-46,J2-3,Z1-2,SW1-3,C5-49,Q1-3,U1-35",
+    "used_designators": "R1,R6-31,R34-46,MX1-12,U1-36,D1-29,C5-49,Q1-4,J2-4,Z1-2,L2-4,SW1-3",
     "variants": []
   },
   "sheets": [

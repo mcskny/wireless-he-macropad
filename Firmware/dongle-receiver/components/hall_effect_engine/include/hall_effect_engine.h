@@ -48,11 +48,17 @@ esp_err_t hall_engine_init(void);
  * @param joy_y       Cikis: joystick Y ekseni (-32768..32767).
  */
 void hall_engine_process(const uint16_t analog[S3_KEY_COUNT],
+                         uint16_t digital_buttons,
                          const calibration_config_t *cal,
                          key_state_t keys[S3_KEY_COUNT],
                          bool active_keys[S3_KEY_COUNT],
                          int16_t *joy_x,
                          int16_t *joy_y);
+
+/** Dijital/arama paketinde analog motoru çalıştırmadan fiziksel tuşları uygula. */
+void hall_engine_process_digital(uint16_t digital_buttons,
+                                 const calibration_config_t *cal,
+                                 bool active_keys[S3_KEY_COUNT]);
 
 /**
  * @brief Tum tuşlarini sifirla (birakma). Watchdog timeout icin.

@@ -1,0 +1,11 @@
+menu "Lighting Lab"
+config LAB_PEER_MAC
+    string "Peer station MAC address (AA:BB:CC:DD:EE:FF)"
+    default ""
+    help
+        Enter the other board's Wi-Fi station MAC. Empty means radio disabled.
+config LAB_WIFI_CHANNEL
+    int "ESP-NOW channel"
+    range 1 13
+    default 1
+endmenu

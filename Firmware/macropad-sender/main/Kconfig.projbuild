@@ -6,6 +6,15 @@
 
 menu "ESP32-C6 Macropad"
 
+    config MACROPAD_ADC_CHANNEL
+        int "MCP3202 channel connected to mux COM"
+        range 0 1
+        default 0
+        help
+            CH0 is connected to the CD74HC4067 COM in the supplied schematic.
+            Select CH1 only if the actual board wiring differs. This applies
+            to both Hall channels and the multiplexed battery measurement.
+
     menu "ESP-NOW / S3 Baglanti"
         config S3_PEER_MAC
             string "S3 alici MAC adresi (xx:xx:xx:xx:xx:xx formatinda)"
@@ -36,7 +45,7 @@ menu "ESP32-C6 Macropad"
         config ACTIVE_LAYER_DEFAULT
             int "Varsayilan aktif katman"
             default 0
-            range 0 4
+            range 0 3
     endmenu
 
     menu "Fail-Safe / Baglanti Sagligi"
@@ -59,6 +68,23 @@ menu "ESP32-C6 Macropad"
     endmenu
 
     menu "Pil Olcumu"
+        config BATTERY_ADC_CALIBRATED
+            bool "Pil ADC boleni gercek kartta kalibre edildi"
+            default n
+            help
+                Devre boleni ve MCP3202 ham ADC esikleri olculmeden pil yuzdesi
+                ve kritik pil kapatma devreye girmez. Esikleri asagida olculup girin.
+
+        config BATTERY_ADC_EMPTY_RAW
+            int "Bos pil ADC esigi (%0)"
+            default 2500
+            range 0 4094
+
+        config BATTERY_ADC_FULL_RAW
+            int "Dolu pil ADC esigi (%100)"
+            default 3500
+            range 1 4095
+
         config BATTERY_MEASURE_PERIOD_MS
             int "Pil voltaj olcum periyodu (ms)"
             default 10000

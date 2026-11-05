@@ -19,6 +19,7 @@ static uint8_t s_step_count = 0;
 static uint8_t s_current_step = 0;
 static uint32_t s_next_step_time_ms = 0;
 static bool s_running = false;
+static uint16_t s_current_keycode = 0;
 
 void macro_engine_init(void)
 {
@@ -27,6 +28,7 @@ void macro_engine_init(void)
     s_current_step = 0;
     s_next_step_time_ms = 0;
     s_running = false;
+    s_current_keycode = 0;
     ESP_LOGI(TAG, "Macro engine baslatildi");
 }
 
@@ -44,6 +46,7 @@ bool macro_engine_start(const macro_step_t *steps, uint8_t count)
     s_step_count = count;
     s_current_step = 0;
     s_running = true;
+    s_current_keycode = s_steps[0].keycode;
 
     /* Ilk adimi hemen isle */
     if (s_steps[0].keycode == 0) {
@@ -71,7 +74,7 @@ bool macro_engine_tick(uint32_t now_ms)
     }
 
     /* Sure dolmadi mi? */
-    if (now_ms < s_next_step_time_ms) {
+    if ((int32_t)(now_ms - s_next_step_time_ms) < 0) {
         return true;  /* hala calisiyor, bekle */
     }
 
@@ -80,12 +83,14 @@ bool macro_engine_tick(uint32_t now_ms)
     if (s_current_step >= s_step_count) {
         /* Makro bitti */
         s_running = false;
+        s_current_keycode = 0;
         ESP_LOGI(TAG, "Makro tamamlandi (%u adim)", s_step_count);
         return false;
     }
 
     /* Adimi isle */
     const macro_step_t *step = &s_steps[s_current_step];
+    s_current_keycode = step->keycode;
     if (step->keycode == 0) {
         ESP_LOGI(TAG, "Makro adim %u: tum tuşlar birak", s_current_step);
     } else {
@@ -102,12 +107,18 @@ bool macro_engine_is_running(void)
     return s_running;
 }
 
+uint16_t macro_engine_current_keycode(void)
+{
+    return s_current_keycode;
+}
+
 void macro_engine_stop(void)
 {
     if (s_running) {
         ESP_LOGI(TAG, "Makro durduruldu (adim %u/%u)", s_current_step, s_step_count);
     }
     s_running = false;
+    s_current_keycode = 0;
     s_current_step = 0;
     s_next_step_time_ms = 0;
 }
