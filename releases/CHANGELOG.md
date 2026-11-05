@@ -5,6 +5,11 @@ Versions are independent. Tags are `c6/vX.Y.Z`, `s3/vX.Y.Z`, and
 prototype; source commits preserve changes between releases. A version is never
 reused or overwritten after publication.
 
+## Studio 0.1.6 — 2026-11-06 (experimental pre-release)
+
+- Hides live press and signal history panels in BLE mode; they remain available over ESP-NOW / S3.
+- Build verified; visual confirmation is pending.
+
 ## Studio 0.1.5 — 2026-11-06 (experimental pre-release)
 
 - Disables the game profile, encoder, joystick and macro controls in BLE mode, while retaining BLE Hall / Rapid Trigger, SOCD, key assignments and lighting configuration.
