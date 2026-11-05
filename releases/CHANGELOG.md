@@ -10,7 +10,7 @@ reused or overwritten after publication.
 - Studio connects to the C6 over an encrypted BLE configuration service for live layer and lighting changes and writing a single layer of supported HID assignments.
 - C6 validates and atomically stores the received layer and stores lighting profiles separately; disconnect aborts incomplete transfers.
 - Three BLE slots and their occupancy are displayed; names are editable local Mac labels, not host names obtained from the paired devices.
-- On the user's hardware, two lighting layers changed correctly and a saved H assignment typed on macOS after a C6 restart. Lighting persistence across restart remains to be verified.
+- On the user's hardware, two lighting layers changed correctly and a saved H assignment typed on macOS after a C6 restart. A solid lighting color also persisted across a C6 restart with Studio closed.
 - BLE live sensor telemetry is not implemented. S3 and C6 keep separate HID profiles; switching back to ESP-NOW can replace C6 assignments with the S3 profile. Other hosts and comprehensive reconnect reliability need testing.
 - BLE uses Just Works pairing; encryption does not provide MITM protection.
 
