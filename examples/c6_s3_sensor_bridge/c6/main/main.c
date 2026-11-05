@@ -118,7 +118,7 @@ static void studio_lighting_store_task(void *arg){
   portENTER_CRITICAL(&send_mux);
   if(studio_light_dirty && esp_timer_get_time()-studio_light_change_us>=2000000){memcpy(copy,synced_profiles,sizeof(copy));studio_light_dirty=false;shouldSave=true;}
   portEXIT_CRITICAL(&send_mux);
-  if(shouldSave){esp_err_t e=nvs_set_blob(local_store,"lights",copy,sizeof(copy));if(e==ESP_OK)e=nvs_commit(local_store);
+  if(shouldSave){esp_err_t e=nvs_set_blob(local_store,"ble_lights",copy,sizeof(copy));if(e==ESP_OK)e=nvs_commit(local_store);
    if(e!=ESP_OK){portENTER_CRITICAL(&send_mux);studio_light_dirty=true;studio_light_change_us=esp_timer_get_time();portEXIT_CRITICAL(&send_mux);printf("BLE lighting save error: %s\n",esp_err_to_name(e));}}
  }
 }
@@ -141,7 +141,7 @@ bool whe_studio_apply(const uint8_t *data,size_t length){
  if(data[0]==0x11 && length==12)return whe_ble_layer_chunk(&studio_stage,tx,data[3],data+4,8);
  if(data[0]==0x12 && length==5){uint16_t crc=(uint16_t)data[3]|((uint16_t)data[4]<<8);
   if(!whe_ble_layer_ready(&studio_stage,tx,crc))return false;
-  esp_err_t e=nvs_set_blob(local_store,"hid_v2",studio_stage.candidate,WHE_PROFILE_BYTES);if(e==ESP_OK)e=nvs_commit(local_store);if(e!=ESP_OK)return false;
+  esp_err_t e=nvs_set_blob(local_store,"ble_hid",studio_stage.candidate,WHE_PROFILE_BYTES);if(e==ESP_OK)e=nvs_commit(local_store);if(e!=ESP_OK)return false;
   portENTER_CRITICAL(&send_mux);memcpy(local_profile,studio_stage.candidate,WHE_PROFILE_BYTES);local_profile_valid=true;studio_profile_revision++;portEXIT_CRITICAL(&send_mux);studio_stage.active=false;return true;
  }
  return false;
@@ -345,10 +345,31 @@ void app_main(void) {
     uint8_t mode=0;(void)nvs_get_u8(local_store,"transport",&mode);
     transport.mode=mode==1?WHE_TRANSPORT_BLE:WHE_TRANSPORT_ESPNOW;
     
+    /* Migrate the old shared settings once before ESP-NOW can overwrite them. */
     size_t size=sizeof(local_profile);
-    local_profile_valid=nvs_get_blob(local_store,"hid_v2",local_profile,&size)==ESP_OK && size==sizeof(local_profile) && whe_profile_validate(local_profile);
+    esp_err_t ble_profile_result=nvs_get_blob(local_store,"ble_hid",local_profile,&size);
+    if(ble_profile_result==ESP_ERR_NVS_NOT_FOUND){
+        size=sizeof(local_profile);
+        if(nvs_get_blob(local_store,"hid_v2",local_profile,&size)==ESP_OK && size==sizeof(local_profile) && whe_profile_validate(local_profile)){
+            ESP_ERROR_CHECK(nvs_set_blob(local_store,"ble_hid",local_profile,sizeof(local_profile)));
+            ESP_ERROR_CHECK(nvs_commit(local_store));
+        }
+    }
+    size=sizeof(local_profile);
+    const char *profile_key=transport.mode==WHE_TRANSPORT_BLE ? "ble_hid" : "hid_v2";
+    local_profile_valid=nvs_get_blob(local_store,profile_key,local_profile,&size)==ESP_OK && size==sizeof(local_profile) && whe_profile_validate(local_profile);
     size=sizeof(synced_profiles);
-    if(nvs_get_blob(local_store,"lights",synced_profiles,&size)==ESP_OK && size==sizeof(synced_profiles)){
+    esp_err_t ble_lights_result=nvs_get_blob(local_store,"ble_lights",synced_profiles,&size);
+    if(ble_lights_result==ESP_ERR_NVS_NOT_FOUND){
+        size=sizeof(synced_profiles);
+        if(nvs_get_blob(local_store,"lights",synced_profiles,&size)==ESP_OK && size==sizeof(synced_profiles)){
+            bool valid=true;for(unsigned i=0;i<4;i++)if(!light_profile_valid(&synced_profiles[i]))valid=false;
+            if(valid){ESP_ERROR_CHECK(nvs_set_blob(local_store,"ble_lights",synced_profiles,sizeof(synced_profiles)));ESP_ERROR_CHECK(nvs_commit(local_store));}
+        }
+    }
+    size=sizeof(synced_profiles);
+    const char *lights_key=transport.mode==WHE_TRANSPORT_BLE ? "ble_lights" : "lights";
+    if(nvs_get_blob(local_store,lights_key,synced_profiles,&size)==ESP_OK && size==sizeof(synced_profiles)){
         synced_valid=true;for(unsigned i=0;i<4;i++)if(!light_profile_valid(&synced_profiles[i]))synced_valid=false;
     }
     if(!synced_valid && transport.mode==WHE_TRANSPORT_BLE){for(unsigned i=0;i<4;i++)synced_profiles[i]=(light_profile_t){.effect=1,.r=70,.g=255,.b=140,.brightness=15,.speed=50,.flags=0};synced_valid=true;}
@@ -505,7 +526,7 @@ void app_main(void) {
             if(released_since && scan_started-released_since>300000 && scan_started-transition_requested_us>=800000){
                 // NVS offsets are preserved by the enlarged factory partition.
                 esp_err_t e=nvs_set_u8(local_store,"transport",(uint8_t)switch_target);
-                if(e==ESP_OK && synced_valid)e=nvs_set_blob(local_store,"lights",synced_profiles,sizeof(synced_profiles));
+                if(e==ESP_OK && synced_valid)e=nvs_set_blob(local_store,transport.mode==WHE_TRANSPORT_BLE ? "ble_lights" : "lights",synced_profiles,sizeof(synced_profiles));
                 if(e==ESP_OK)e=nvs_commit(local_store);
                 if(e==ESP_OK)esp_restart();
                 printf("MODE save failed: %s\n",esp_err_to_name(e));switch_pending=false;portENTER_CRITICAL(&send_mux);transition_animation=false;portEXIT_CRITICAL(&send_mux);

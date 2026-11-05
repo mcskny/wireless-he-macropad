@@ -5,6 +5,12 @@ Versions are independent. Tags are `c6/vX.Y.Z`, `s3/vX.Y.Z`, and
 prototype; source commits preserve changes between releases. A version is never
 reused or overwritten after publication.
 
+## C6 0.1.6 and Studio 0.1.4 — 2026-11-06 (experimental pre-releases)
+
+- Store BLE and ESP-NOW layer profiles and lighting separately on the C6, and separate local Studio layer drafts by connection mode. Existing shared settings are copied once on migration.
+- Shared Hall calibration remains common to both modes. Switching between modes requires a physical end-to-end test; the migration cannot recover profiles overwritten before this update.
+- C6 and Studio built successfully. The C6 update preserves the NVS partition; a local backup was taken before flashing.
+
 ## Studio 0.1.3 — 2026-11-06 (experimental pre-release)
 
 - In BLE mode, analog game presets are disabled, including a previously selected preset; the UI explains that analog gamepad and encoder actions are unavailable over BLE.

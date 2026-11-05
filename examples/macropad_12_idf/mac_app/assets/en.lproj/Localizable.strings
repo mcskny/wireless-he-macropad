@@ -566,3 +566,6 @@
 
 "BLE'de analog oyun kumandası ve encoder görevleri desteklenmiyor. Gri profiller analog eksen gerektirir." = "Analog gamepad and encoder actions are not supported over BLE. Dimmed profiles require analog axes.";
 "Bu profil BLE'de kullanılamaz; başka bir profil seç." = "This profile is unavailable over BLE; choose another profile.";
+
+"Bağlantı profili" = "Connection profile";
+"Yazdır, seçili Bluetooth layer’ını C6’ya kaydeder. ESP-NOW layer ayarları ayrı saklanır. Analog oyun ve encoder ayarları henüz kaydedilmez." = "Write saves the selected Bluetooth layer to C6. ESP-NOW layer settings are stored separately. Analog game and encoder settings are not yet written.";

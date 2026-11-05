@@ -287,7 +287,19 @@ final class StudioModel: ObservableObject {
     private var bluetoothStatusTimer:Timer?
     var deviceVisible:Bool {freshSensor || bluetoothHIDPresent}
     func searchBluetooth(){bleStudio?.setEnabled(true)}
-    @Published var config:Config { didSet { if let d=try? JSONEncoder().encode(config) { UserDefaults.standard.set(d,forKey:"native-config-v1") } } }
+    @Published var config:Config { didSet {
+        if let d=try? JSONEncoder().encode(config) { UserDefaults.standard.set(d,forKey:"native-config-v1") }
+        if let d=try? JSONEncoder().encode(config.layers) { UserDefaults.standard.set(d,forKey:"native-layers-"+layerBank) }
+    } }
+    @Published private(set) var layerBank="espnow"
+    func selectLayerBank(_ bank:String) {
+        guard (bank == "ble" || bank == "espnow"),bank != layerBank else{return}
+        if let data=try? JSONEncoder().encode(config.layers) {UserDefaults.standard.set(data,forKey:"native-layers-"+layerBank)}
+        let saved=UserDefaults.standard.data(forKey:"native-layers-"+bank).flatMap{try? JSONDecoder().decode([LayerConfig].self,from:$0)}
+        layerBank=bank;UserDefaults.standard.set(bank,forKey:"native-layers-active")
+        if let saved=saved,saved.count == 4 {config.layers=saved}
+        bleLastLights=[];hidWriteStatus=nil;hidWriteError=nil
+    }
     @Published var macOutputEnabled=false {didSet {if !macOutputEnabled {macKeyOutput.releaseAll();macPressed=Array(repeating:false,count:12)}}}
     private let macKeyOutput=MacKeyOutput()
     private var macPressed=Array(repeating:false,count:12)
@@ -614,6 +626,13 @@ final class StudioModel: ObservableObject {
     private var lastSensorSampleAt:TimeInterval=0
     init() {
         if let d=UserDefaults.standard.data(forKey:"native-config-v1"), let c=try? JSONDecoder().decode(Config.self,from:d), c.layers.count==4, c.hall.count==12, c.calibration.count==12 { config=c } else { config=Config() }
+        let storedBank=UserDefaults.standard.string(forKey:"native-layers-active")
+        layerBank=storedBank == "ble" ? "ble" : "espnow"
+        let initialLayers=config.layers
+        for bank in ["ble","espnow"] where UserDefaults.standard.data(forKey:"native-layers-"+bank) == nil {
+            if let data=try? JSONEncoder().encode(initialLayers) {UserDefaults.standard.set(data,forKey:"native-layers-"+bank)}
+        }
+        if let data=UserDefaults.standard.data(forKey:"native-layers-"+layerBank),let saved=try? JSONDecoder().decode([LayerConfig].self,from:data),saved.count == 4 {config.layers=saved}
         let start=UserDefaults.standard.string(forKey:"studio-start-page") ?? "Canlı test"
         if ["Canlı test","Katmanlar","Oyun profili","Hall ayarları","Aydınlatma","Güç ve pil","Gelişmiş"].contains(start) {page=start}
         migrateLegacyGame()
@@ -628,14 +647,14 @@ final class StudioModel: ObservableObject {
         }
         ble.changed={ [weak self] ready in
             guard let self=self else{return};self.bleControlReady=ready;self.bleLastLights=[];if !ready {self.bleSlotIndex=nil;self.bleSlotMask=nil}
-            if ready {self.blePendingLayer=nil}
+            if ready {self.blePendingLayer=nil;if !self.freshSensor {self.selectLayerBank("ble")}}
         }
         ble.setEnabled(bluetoothHIDPresent)
         bluetoothStatusTimer=Timer.scheduledTimer(withTimeInterval:2.0,repeats:true){[weak self] _ in
             let present=wirelessHEBluetoothHIDPresent()
             if self?.bluetoothHIDPresent != present {self?.bluetoothHIDPresent=present;self?.bleStudio?.setEnabled(present)}
             guard let self=self else{return}
-            if self.bleControlReady && !self.freshSensor {self.syncBLELayer();self.syncLighting()}
+            if self.bleControlReady && !self.freshSensor {self.selectLayerBank("ble");self.syncBLELayer();self.syncLighting()}
         }
         lightingTimer=Timer.scheduledTimer(withTimeInterval:1.0/24.0,repeats:true){[weak self] _ in
             guard let self=self else{return}
@@ -709,6 +728,7 @@ final class StudioModel: ObservableObject {
                     if let deviceLayer=deviceLayer,(0..<4).contains(deviceLayer.layer),previous?.layer != deviceLayer.layer {self.applyingDeviceLayer=true;self.layer=deviceLayer.layer;self.applyingDeviceLayer=false}
                 }
                 guard let packet=packet,packet.connected,let rawValues=packet.values,rawValues.count==12 else { if self.sensorCapture != nil {self.cancelSensorCapture("Bağlantı kesildi; ölçüm kaydedilmedi.")}; if self.values != nil {self.history=[];self.ranges=Array(repeating:nil,count:12);self.values=nil;self.rawValues=nil;self.previewFree=nil;self.lightPressed=Array(repeating:nil,count:12)};if self.sensorSerialPort != nil {self.sensorSerialPort=nil};self.resetLocalTriggers();self.macKeyOutput.releaseAll();self.updateDrivingOutput();return }
+                self.selectLayerBank("espnow")
                 self.syncLighting()
                 if self.sensorSerialPort != packet.port {self.sensorSerialPort=packet.port}
                 if let sample=packet.sample_id, sample != self.lastSensorSampleID {
@@ -1285,6 +1305,7 @@ struct LayersView:View {
                     Text("Seçilen klavye tuşları, desteklenen kısayollar ve medya görevleri çalışır. Encoder verisi henüz gelmiyor.").font(.caption).foregroundStyle(.secondary)
                     Text("S3 USB klavye çıktısıyla birlikte açılırsa aynı tuş iki kez gönderilebilir.").font(.caption).foregroundStyle(.orange)
                 }
+                HStack {Text("Bağlantı profili").font(.caption).foregroundStyle(.secondary);Text(model.layerBank == "ble" ? "Bluetooth" : "ESP-NOW · S3").font(.caption.bold()).foregroundStyle(accent);Spacer()}
                 Picker("Katman",selection:$model.layer){ForEach(0..<4){Text("Layer \($0+1)").tag($0)}}.labelsHidden().pickerStyle(.segmented)
                 HStack{Image(systemName:"square.stack.3d.up").foregroundStyle(accent);Text(model.config.layers[model.layer].name.isEmpty ? "Adsız katman" : model.config.layers[model.layer].name).font(.headline);Spacer();Text(verbatim:studioDisplay("\(model.config.layers[model.layer].keys.filter{!$0.isEmpty}.count) / 12 atanmış")).font(.caption).foregroundStyle(.secondary)}
             }}
@@ -1320,7 +1341,7 @@ struct LayersView:View {
                     }
                     if let assignment=behavior.primaryKey, assignment.label == model.config.layers[model.layer].keys[model.selected] {Text(verbatim:studioDisplay("Bağlı tuş: \(assignmentName(assignment))")).font(.caption2).foregroundStyle(.secondary)}
                     else if !model.config.layers[model.layer].keys[model.selected].isEmpty {Text("Mevcut görev açıklaması korunuyor; gerçek tuş kodu için listeden yeniden seç.").font(.caption2).foregroundStyle(.secondary)}
-                    Text(LocalizedStringKey(model.bleControlReady && !model.freshSensor ? "Yazdır, seçili layer’ı C6’ya kaydeder. S3 kaydı ayrıdır; ESP-NOW’a geçince S3’teki eski profil C6’daki profili değiştirebilir. Analog oyun ve encoder ayarları henüz kaydedilmez." : "Yazdır, seçili layer’ın desteklenen klavye ve medya görevlerini S3’e kaydeder. Analog oyun ve encoder ayarları henüz kaydedilmez.")).font(.caption).foregroundStyle(.secondary)
+                    Text(LocalizedStringKey(model.bleControlReady && !model.freshSensor ? "Yazdır, seçili Bluetooth layer’ını C6’ya kaydeder. ESP-NOW layer ayarları ayrı saklanır. Analog oyun ve encoder ayarları henüz kaydedilmez." : "Yazdır, seçili layer’ın desteklenen klavye ve medya görevlerini S3’e kaydeder. Analog oyun ve encoder ayarları henüz kaydedilmez.")).font(.caption).foregroundStyle(.secondary)
                     if behavior.mode == "twoStage" {
                         Text("2. KADEME GÖREVİ").font(.caption2.bold()).tracking(1).foregroundStyle(accent)
                         taskDisplay(behavior.secondAction)

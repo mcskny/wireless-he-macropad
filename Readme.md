@@ -1,4 +1,6 @@
-> **6 November 2026:** Studio supports configuring C6 lighting, selecting layers and writing supported per-layer HID assignments over encrypted BLE. Hardware checks confirmed lighting changes on two layers and an H assignment that survived a C6 restart. Three paired-slot names are locally editable aliases, not automatically retrieved host names. BLE sensor telemetry and shared C6/S3 profile synchronization are not implemented; a solid lighting color also persisted across a restart with Studio closed. Other hosts need further testing.
+> **Separate transport profiles (experimental):** C6 0.1.6 and Studio 0.1.4 keep BLE and ESP-NOW layer settings separately, copying prior shared settings on first migration. End-to-end switching still requires hardware verification. Hall calibration remains shared.
+
+> **6 November 2026:** Studio supports configuring C6 lighting, selecting layers and writing supported per-layer HID assignments over encrypted BLE. Hardware checks confirmed lighting changes on two layers and an H assignment that survived a C6 restart. Three paired-slot names are locally editable aliases, not automatically retrieved host names. BLE sensor telemetry and automatic synchronization between C6 and S3 are not implemented; a solid lighting color also persisted across a restart with Studio closed. Other hosts need further testing.
 
 # Wireless HE Macropad
 
