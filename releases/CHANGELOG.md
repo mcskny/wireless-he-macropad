@@ -5,6 +5,11 @@ Versions are independent. Tags are `c6/vX.Y.Z`, `s3/vX.Y.Z`, and
 prototype; source commits preserve changes between releases. A version is never
 reused or overwritten after publication.
 
+## Studio 0.1.3 — 2026-11-06 (experimental pre-release)
+
+- In BLE mode, analog game presets are disabled, including a previously selected preset; the UI explains that analog gamepad and encoder actions are unavailable over BLE.
+- This is a presentation and selection guard; it does not add BLE analog support.
+
 ## C6 0.1.5 and Studio 0.1.2 — 2026-11-06 (experimental pre-releases)
 
 - Studio connects to the C6 over an encrypted BLE configuration service for live layer and lighting changes and writing a single layer of supported HID assignments.

@@ -563,3 +563,6 @@
 "Cihazı ara" = "Find device";
 
 "Yazdır, seçili layer’ı C6’ya kaydeder. S3 kaydı ayrıdır; ESP-NOW’a geçince S3’teki eski profil C6’daki profili değiştirebilir. Analog oyun ve encoder ayarları henüz kaydedilmez." = "Write saves the selected layer to C6. S3 has a separate profile and may replace the C6 profile when switching to ESP-NOW. Analog game and encoder settings are not yet saved.";
+
+"BLE'de analog oyun kumandası ve encoder görevleri desteklenmiyor. Gri profiller analog eksen gerektirir." = "Analog gamepad and encoder actions are not supported over BLE. Dimmed profiles require analog axes.";
+"Bu profil BLE'de kullanılamaz; başka bir profil seç." = "This profile is unavailable over BLE; choose another profile.";

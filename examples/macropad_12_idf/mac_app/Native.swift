@@ -1271,6 +1271,10 @@ struct LayersView:View {
         ("Görüşme",["Mikrofonu aç / kapat","Kamerayı aç / kapat","Ekran paylaşımını aç / kapat","Görüşmeden ayrıl"])
     ]
     private var preset:LayerPreset { presets.first(where:{$0.id==selectedPreset}) ?? presets[0] }
+    private var usingBLE:Bool { !model.freshSensor && (model.bleControlReady || model.bluetoothHIDPresent) }
+    private func unsupportedOverBLE(_ item:LayerPreset)->Bool {
+        usingBLE && ["Euro Truck Simulator 2", "Assetto Corsa", "Microsoft Flight Simulator", "Farming Simulator"].contains(item.id)
+    }
     var body:some View {
         VStack(spacing:16) {
             GlassCard {VStack(alignment:.leading,spacing:14) {
@@ -1360,12 +1364,14 @@ struct LayersView:View {
             }
             GlassCard {VStack(alignment:.leading,spacing:16) {
                 SectionTitle(title:"Hazır profiller",subtitle:"Bir başlangıç seç, katmana uygula ve düzenleyip kendi profilin olarak kaydet")
+                if usingBLE {Label("BLE'de analog oyun kumandası ve encoder görevleri desteklenmiyor. Gri profiller analog eksen gerektirir.",systemImage:"info.circle").font(.caption).foregroundStyle(.secondary)}
                 LazyVGrid(columns:[GridItem(.adaptive(minimum:155),spacing:10)],spacing:10) {ForEach(presets){item in
-                    Button {selectedPreset=item.id} label:{VStack(alignment:.leading,spacing:8){Image(systemName:item.icon).font(.title3).foregroundStyle(accent);Text(item.id).font(.subheadline.bold());Text(LocalizedStringKey(item.detail)).font(.caption).foregroundStyle(.secondary).lineLimit(1)}.frame(maxWidth:.infinity,minHeight:68,alignment:.leading).padding(12).background(selectedPreset == item.id ? accent.opacity(0.12) : .white.opacity(0.04),in:RoundedRectangle(cornerRadius:12)).overlay(RoundedRectangle(cornerRadius:12).strokeBorder(selectedPreset == item.id ? accent.opacity(0.6) : .white.opacity(0.06),lineWidth:1))}.buttonStyle(.plain)
+                    Button {selectedPreset=item.id} label:{VStack(alignment:.leading,spacing:8){Image(systemName:item.icon).font(.title3).foregroundStyle(accent);Text(item.id).font(.subheadline.bold());Text(LocalizedStringKey(item.detail)).font(.caption).foregroundStyle(.secondary).lineLimit(1)}.frame(maxWidth:.infinity,minHeight:68,alignment:.leading).padding(12).background(selectedPreset == item.id ? accent.opacity(0.12) : .white.opacity(0.04),in:RoundedRectangle(cornerRadius:12)).overlay(RoundedRectangle(cornerRadius:12).strokeBorder(selectedPreset == item.id ? accent.opacity(0.6) : .white.opacity(0.06),lineWidth:1))}.buttonStyle(.plain).disabled(unsupportedOverBLE(item)).opacity(unsupportedOverBLE(item) ? 0.4 : 1).help(unsupportedOverBLE(item) ? "BLE analog oyun kumandası desteklemiyor." : "")
                 }}
+                if unsupportedOverBLE(preset) {Label("Bu profil BLE'de kullanılamaz; başka bir profil seç.",systemImage:"exclamationmark.triangle").font(.caption).foregroundStyle(.orange)}
                 HStack(alignment:.top,spacing:20) {
                     VStack(alignment:.leading,spacing:8){Text(verbatim:studioDisplay("\(preset.id) · ÖNİZLEME")).font(.caption2.bold()).tracking(1).foregroundStyle(accent);LazyVGrid(columns:Array(repeating:GridItem(.flexible(),spacing:5),count:3),spacing:5){ForEach(0..<12){i in Text(verbatim:studioDisplay(preset.rows[i])).font(.caption2).lineLimit(1).frame(maxWidth:.infinity,minHeight:27).padding(.horizontal,4).background(.white.opacity(0.05),in:RoundedRectangle(cornerRadius:6))}}}.frame(maxWidth:440)
-                    VStack(alignment:.leading,spacing:9){Text("Encoder").font(.caption.bold());Text(verbatim:"← "+studioDisplay(preset.encoder[0])+"  ·  → "+studioDisplay(preset.encoder[1])).font(.caption).foregroundStyle(.secondary);Text(verbatim:studioDisplay("Bas")+" · "+studioDisplay(preset.encoder[2])).font(.caption).foregroundStyle(.secondary);Text("Uygulamak seçili katmanın adını, tuşlarını, davranışlarını ve encoder görevlerini değiştirir; iki kademeyi ve encoder’ın layer basılı görevlerini sıfırlar, oyun modunu profile göre açar veya kapatır ve ışığı korur.").font(.caption).foregroundStyle(.secondary);HStack{Button(action:{applyPreset()}) {Text(verbatim:UserDefaults.standard.string(forKey:"studio-language") == "en" ? "Apply to Layer \(model.layer+1)" : "Layer \(model.layer+1)’e uygula")}.buttonStyle(.borderedProminent);if undoIndex == model.layer && undoLayer != nil {Button("Geri al"){undoPreset()}}}}
+                    VStack(alignment:.leading,spacing:9){Text("Encoder").font(.caption.bold());Text(verbatim:"← "+studioDisplay(preset.encoder[0])+"  ·  → "+studioDisplay(preset.encoder[1])).font(.caption).foregroundStyle(.secondary);Text(verbatim:studioDisplay("Bas")+" · "+studioDisplay(preset.encoder[2])).font(.caption).foregroundStyle(.secondary);Text("Uygulamak seçili katmanın adını, tuşlarını, davranışlarını ve encoder görevlerini değiştirir; iki kademeyi ve encoder’ın layer basılı görevlerini sıfırlar, oyun modunu profile göre açar veya kapatır ve ışığı korur.").font(.caption).foregroundStyle(.secondary);HStack{Button(action:{applyPreset()}) {Text(verbatim:UserDefaults.standard.string(forKey:"studio-language") == "en" ? "Apply to Layer \(model.layer+1)" : "Layer \(model.layer+1)’e uygula")}.buttonStyle(.borderedProminent).disabled(unsupportedOverBLE(preset));if undoIndex == model.layer && undoLayer != nil {Button("Geri al"){undoPreset()}}}}
                 }
                 if let setup=MacKeyOutput.customPresetActions[preset.id],!setup.isEmpty {
                     VStack(alignment:.leading,spacing:5){
