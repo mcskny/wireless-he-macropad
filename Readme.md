@@ -11,7 +11,7 @@ The project explores analog key travel, configurable actuation, per-layer action
 [![ESP-IDF](https://img.shields.io/badge/ESP--IDF-6.1-blue)](https://github.com/espressif/esp-idf)
 [![Platform](https://img.shields.io/badge/Studio-macOS-black)](#wireless-he-studio)
 [![Status](https://img.shields.io/badge/status-active%20prototype-orange)](#what-works-today)
-[![License](https://img.shields.io/badge/license-custom%20non--commercial-orange)](LICENSE)
+[![License](https://img.shields.io/badge/license-GPL--3.0-blue)](LICENSE)
 
 ## At a glance
 
@@ -168,6 +168,6 @@ C6 firmware, S3 firmware, and Studio use separate version numbers and GitHub rel
 
 ## License
 
-Project-owned materials are covered by the [custom non-commercial license](LICENSE), unless an individual file or third-party component states different terms. Commercial use of covered materials requires prior written permission: **mcskny01@gmail.com**.
+The project is distributed under the [GNU General Public License, version 3](LICENSE) (GPL-3.0-only), unless a file or third-party component specifies different terms. GPLv3 permits commercial use subject to its conditions, including source availability when applicable; no separate commercial permission is required.
 
-Files explicitly marked MIT / MIT-only remain under their stated MIT terms ([license text](LICENSES/MIT.txt)). Earlier versions previously released under MIT retain their existing permissions. This non-commercial license is not an open-source license.
+Some files carry explicit MIT / MIT-only notices and remain available under those terms ([MIT license text](LICENSES/MIT.txt)). Previously published MIT versions and rights granted under them are unaffected. Third-party components retain their own licenses.
