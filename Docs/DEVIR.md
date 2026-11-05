@@ -1,3 +1,7 @@
+> **Güncelleme 6 Kasım 2026:** Aşağıdaki eski durum notları tarihsel olabilir. C6 0.1.5 / Studio 0.1.2 ile şifreli BLE ayar servisi, canlı katman ve aydınlatma ayarı, tek katman HID profilinin C6 NVS belleğine doğrulanarak yazılması eklendi. Mac üzerinde iki layer aydınlatması ve H atamasının C6 yeniden başladıktan sonra yazması kullanıcı tarafından doğrulandı. Işıkların yeniden başlatma sonrası kalıcılığı henüz ayrıca doğrulanmadı. BLE canlı sensör telemetrisi yok. S3 ve C6 HID profilleri ayrı; ESP-NOW dönüşünde S3 profili C6 profilinin üstüne yazılabilir. Üç yuvanın adları yalnızca Mac'te düzenlenen takma adlardır, eşleşmiş cihazın gerçek adı otomatik okunmaz. Diğer cihazlar ve kapsamlı yeniden bağlantı testleri bekliyor.
+
+> Kod: `examples/c6_s3_sensor_bridge/c6/main/ble_studio_gatt.c`, `shared/ble_layer_staging.h`, `examples/macropad_12_idf/mac_app/BLEStudio.swift`. Yalnızca ilgili yuvanın eşleşmesini silme kullanıcının açık isteğiyle bir defa yapıldı; geçici silme kodu son sürümde bulunmuyor.
+
 # Geliştirici / yapay zekâ devir notları
 
 Son doğrulama: 5 Kasım 2026. Ürüne ve güncel test sonuçlarına genel bakış için
@@ -102,4 +106,4 @@ release'i değiştirme. Başlangıç 0.1.0 ürünün bitmiş olduğunu gösterme
 
 ## Studio 0.1.1 bağlantı durumu
 
-Studio, `IOHIDDevice` sistem kayıtlarında ürün adı Wireless HE ve Bluetooth taşıması olan cihazı gözlemler; giriş olaylarını okumaz. Bu yalnızca macOS'un HID aygıtı gördüğünü belirtir, gerçek sensör akışını kanıtlamaz. Canlı sensör ve ayar yazma protokolü hâlâ S3 USB yolu üzerindedir. BLE aracılığıyla Studio yapılandırma ve telemetri GATT servisi ve istemcisi henüz yoktur.
+Studio, `IOHIDDevice` sistem kayıtlarında ürün adı Wireless HE ve Bluetooth taşıması olan cihazı gözlemler; giriş olaylarını okumaz. Bu yalnızca macOS'un HID aygıtı gördüğünü belirtir, gerçek sensör akışını kanıtlamaz. Canlı sensör ve ayar yazma protokolü hâlâ S3 USB yolu üzerindedir. Bu not 0.1.1 içindir; 0.1.2 ile BLE yapılandırma servisi eklendi, ancak BLE sensör telemetrisi hâlâ yoktur.

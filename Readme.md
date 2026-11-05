@@ -1,3 +1,5 @@
+> **6 November 2026:** Studio supports configuring C6 lighting, selecting layers and writing supported per-layer HID assignments over encrypted BLE. Hardware checks confirmed lighting changes on two layers and an H assignment that survived a C6 restart. Three paired-slot names are locally editable aliases, not automatically retrieved host names. BLE sensor telemetry and shared C6/S3 profile synchronization are not implemented; lighting persistence and other hosts need further testing.
+
 # Wireless HE Macropad
 
 A wireless, 12-key Hall-effect macropad built around a custom PCB, an ESP32-C6 sender, an ESP32-S3 USB receiver, and a native macOS companion app.

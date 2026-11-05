@@ -3,6 +3,7 @@
 #include "freertos/task.h"
 #include "esp_bt.h"
 #include "ble_transport.h"
+#include "ble_studio_gatt.h"
 #include <stdatomic.h>
 #include "esp_timer.h"
 #include "esp_hidd.h"
@@ -103,9 +104,18 @@ static int gap_event(struct ble_gap_event *event,void *arg){
   }
   encrypted=ok;
   if(!ok && connection!=BLE_HS_CONN_HANDLE_NONE)ble_gap_terminate(connection,BLE_ERR_REM_USER_CONN_TERM);
+ }else if(event->type==BLE_GAP_EVENT_REPEAT_PAIRING){
+  struct ble_gap_conn_desc peer;
+  if(esp_timer_get_time()<atomic_load(&pairing_until) &&
+     ble_gap_conn_find(event->repeat_pairing.conn_handle,&peer)==0 &&
+     slots[selected_slot].valid && addr_equal(&slots[selected_slot].addr,&peer.peer_id_addr) &&
+     ble_store_util_delete_peer(&peer.peer_id_addr)==0){
+    ESP_LOGI(TAG,"renewing selected host bond during pairing window");return BLE_GAP_REPEAT_PAIRING_RETRY;
+  }
+  ESP_LOGW(TAG,"repeat pairing denied outside selected host pairing window");return BLE_GAP_REPEAT_PAIRING_IGNORE;
  }else if(event->type==BLE_GAP_EVENT_DISCONNECT){
   if(event->disconnect.conn.conn_handle!=connection){ESP_LOGW(TAG,"ignoring stale disconnect");return 0;}
-  ESP_LOGW(TAG,"disconnected reason=%d",event->disconnect.reason);connection=BLE_HS_CONN_HANDLE_NONE;encrypted=false;advertise();}
+  ESP_LOGW(TAG,"disconnected reason=%d",event->disconnect.reason);whe_studio_disconnected();connection=BLE_HS_CONN_HANDLE_NONE;encrypted=false;advertise();}
  else if(event->type==BLE_GAP_EVENT_ADV_COMPLETE)advertise();
  return 0;
 }
@@ -121,11 +131,6 @@ static void advertise(void){
  int rc=ble_gap_adv_set_fields(&fields);if(rc){ESP_LOGE(TAG,"adv fields %d",rc);return;}
  struct ble_gap_adv_params params={0};params.conn_mode=BLE_GAP_CONN_MODE_UND;params.disc_mode=BLE_GAP_DISC_MODE_GEN;
  params.itvl_min=BLE_GAP_ADV_ITVL_MS(30);params.itvl_max=BLE_GAP_ADV_ITVL_MS(50);
- if(slots[selected_slot].valid){
-  int filter_rc=ble_gap_wl_set(&slots[selected_slot].addr,1);
-  if(filter_rc==0)params.filter_policy=BLE_HCI_ADV_FILT_CONN;
-  else ESP_LOGW(TAG,"host filter unavailable (%d); software slot check remains active",filter_rc);
- }
  rc=ble_gap_adv_start(own_addr_type,NULL,BLE_HS_FOREVER,&params,gap_event,NULL);
  if(rc)ESP_LOGE(TAG,"advertise %d",rc);
 }
@@ -159,6 +164,7 @@ void whe_ble_start(void){
  if(nvs_get_u8(slot_nvs,"selected",&selected_slot)!=ESP_OK || selected_slot>=3)selected_slot=0;
  ESP_ERROR_CHECK(esp_hidd_dev_init(&config,ESP_HID_TRANSPORT_BLE,hid_event,&device));
  if(ble_svc_gap_device_name_set("Wireless HE")!=0) abort();
+ if(whe_studio_gatt_init()!=0)abort();
  nimble_port_freertos_init(host_task);
  ESP_LOGI(TAG,"BLE HID started; encrypted Just Works bonding (no MITM authentication)");
  (void)connection;(void)encrypted;
@@ -190,4 +196,9 @@ esp_err_t whe_ble_select_slot(unsigned slot){
  else if(connection!=BLE_HS_CONN_HANDLE_NONE)ble_gap_terminate(connection,BLE_ERR_REM_USER_CONN_TERM);
  else {if(ble_gap_adv_active())ble_gap_adv_stop();advertise();}
  return ESP_OK;
+}
+
+void whe_ble_slot_snapshot(uint8_t out[3]){
+ out[0]=1;out[1]=selected_slot;out[2]=0;
+ for(unsigned i=0;i<3;i++)if(slots[i].valid)out[2]|=(uint8_t)(1u<<i);
 }

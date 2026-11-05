@@ -11,3 +11,5 @@ void whe_ble_pairing_start(void);
 
 /* Select a saved BLE host slot; an empty slot opens the pairing window. */
 esp_err_t whe_ble_select_slot(unsigned slot);
+
+void whe_ble_slot_snapshot(uint8_t out[3]);

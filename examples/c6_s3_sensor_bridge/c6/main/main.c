@@ -25,6 +25,9 @@
 #include "light_control.h"
 #include "disconnected_warning.h"
 #include "ble_transport.h"
+#include "ble_studio_gatt.h"
+#include "ble_studio_protocol.h"
+#include "ble_layer_staging.h"
 #include "transport_mode.h"
 #include "ble_slots.h"
 #include "ble_profile_wire.h"
@@ -104,6 +107,45 @@ static uint8_t local_profile[WHE_PROFILE_BYTES];
 static bool local_profile_valid;
 static QueueHandle_t profile_queue;
 typedef struct {uint8_t bytes[WHE_BLE_PROFILE_WIRE_MAX];size_t length;} profile_frame_t;
+static whe_ble_layer_staging_t studio_stage;
+static uint32_t studio_profile_revision;
+static bool studio_light_dirty;
+static int64_t studio_light_change_us;
+static void studio_lighting_store_task(void *arg){
+ (void)arg;
+ for(;;){
+  vTaskDelay(pdMS_TO_TICKS(500));light_profile_t copy[4];bool shouldSave=false;
+  portENTER_CRITICAL(&send_mux);
+  if(studio_light_dirty && esp_timer_get_time()-studio_light_change_us>=2000000){memcpy(copy,synced_profiles,sizeof(copy));studio_light_dirty=false;shouldSave=true;}
+  portEXIT_CRITICAL(&send_mux);
+  if(shouldSave){esp_err_t e=nvs_set_blob(local_store,"lights",copy,sizeof(copy));if(e==ESP_OK)e=nvs_commit(local_store);
+   if(e!=ESP_OK){portENTER_CRITICAL(&send_mux);studio_light_dirty=true;studio_light_change_us=esp_timer_get_time();portEXIT_CRITICAL(&send_mux);printf("BLE lighting save error: %s\n",esp_err_to_name(e));}}
+ }
+}
+void whe_studio_disconnected(void){studio_stage.active=false;}
+uint8_t whe_studio_current_layer(void){portENTER_CRITICAL(&send_mux);uint8_t layer=lighting_layer;portEXIT_CRITICAL(&send_mux);return layer;}
+/* BLE host task invokes this after connection encryption and selected-host check.
+   A successful ATT response means the command was validated and applied. */
+bool whe_studio_apply(const uint8_t *data,size_t length){
+ if(!data || !length)return false;
+ whe_ble_studio_command_t cmd;
+ if(whe_ble_studio_decode(data,length,&cmd)){
+  if(cmd.operation==WHE_BLE_STUDIO_SELECT_LAYER){portENTER_CRITICAL(&send_mux);layer_command_value=cmd.layer;layer_command_pending=true;portEXIT_CRITICAL(&send_mux);return true;}
+  if(cmd.operation==WHE_BLE_STUDIO_LIGHT_PROFILE){light_profile_t p;memcpy(&p,cmd.profile,sizeof(p));if(!light_profile_valid(&p))return false;
+   portENTER_CRITICAL(&send_mux);if(memcmp(&synced_profiles[cmd.layer],&p,sizeof(p))){synced_profiles[cmd.layer]=p;studio_light_dirty=true;studio_light_change_us=esp_timer_get_time();}synced_valid=true;lighting_host_ms=(uint64_t)esp_timer_get_time()/1000;lighting_host_received_us=esp_timer_get_time();portEXIT_CRITICAL(&send_mux);return true;}
+  return false;
+ }
+ if(length<4)return false;
+ uint16_t tx=(uint16_t)data[1]|((uint16_t)data[2]<<8);
+ if(data[0]==0x10 && length==4){uint8_t current[WHE_PROFILE_BYTES];portENTER_CRITICAL(&send_mux);memcpy(current,local_profile,sizeof(current));portEXIT_CRITICAL(&send_mux);return whe_ble_layer_begin(&studio_stage,current,data[3],tx);}
+ if(data[0]==0x11 && length==12)return whe_ble_layer_chunk(&studio_stage,tx,data[3],data+4,8);
+ if(data[0]==0x12 && length==5){uint16_t crc=(uint16_t)data[3]|((uint16_t)data[4]<<8);
+  if(!whe_ble_layer_ready(&studio_stage,tx,crc))return false;
+  esp_err_t e=nvs_set_blob(local_store,"hid_v2",studio_stage.candidate,WHE_PROFILE_BYTES);if(e==ESP_OK)e=nvs_commit(local_store);if(e!=ESP_OK)return false;
+  portENTER_CRITICAL(&send_mux);memcpy(local_profile,studio_stage.candidate,WHE_PROFILE_BYTES);local_profile_valid=true;studio_profile_revision++;portEXIT_CRITICAL(&send_mux);studio_stage.active=false;return true;
+ }
+ return false;
+}
 static void profile_worker(void *arg){
     (void)arg;whe_ble_profile_staging_t staging={0};profile_frame_t f;
     for(;;){
@@ -309,9 +351,10 @@ void app_main(void) {
     if(nvs_get_blob(local_store,"lights",synced_profiles,&size)==ESP_OK && size==sizeof(synced_profiles)){
         synced_valid=true;for(unsigned i=0;i<4;i++)if(!light_profile_valid(&synced_profiles[i]))synced_valid=false;
     }
+    if(!synced_valid && transport.mode==WHE_TRANSPORT_BLE){for(unsigned i=0;i<4;i++)synced_profiles[i]=(light_profile_t){.effect=1,.r=70,.g=255,.b=140,.brightness=15,.speed=50,.flags=0};synced_valid=true;}
     profile_queue=xQueueCreate(20,sizeof(profile_frame_t));assert(profile_queue);
     if(transport.mode==WHE_TRANSPORT_ESPNOW){radio_init();assert(xTaskCreate(profile_worker,"profile-store",4096,NULL,1,NULL)==pdPASS);}
-    else whe_ble_start();
+    else {assert(xTaskCreate(studio_lighting_store_task,"ble-lights-save",3072,NULL,1,NULL)==pdPASS);whe_ble_start();}
     printf("TRANSPORT %s profile=%s\n",mode==1?"BLE":"ESP-NOW",local_profile_valid?"saved":"missing");
     gpio_config_t mux = { .pin_bit_mask = (1ULL<<0)|(1ULL<<1)|(1ULL<<2)|(1ULL<<21), .mode = GPIO_MODE_OUTPUT };
     ESP_ERROR_CHECK(gpio_config(&mux));
@@ -346,7 +389,7 @@ void app_main(void) {
     uint32_t sequence = 0;
     bool button_raw=false,button_stable=false;int64_t button_changed_us=esp_timer_get_time();uint8_t layer=0;
     whe_hid_engine_t ble_engine;whe_hid_reset(&ble_engine);
-    uint8_t ble_layer=255;bool ble_connected=false,ble_armed=false;
+    uint8_t ble_layer=255;uint32_t applied_revision=0;bool ble_connected=false,ble_armed=false;
     whe_hid_report_t previous_ble={0};bool ble_sent=false;int64_t next_ble=0;
     whe_ble_slot_chord_t slot_chord={0};bool slot_stable[3]={0},slot_candidate[3]={0};int64_t slot_changed[3]={0};uint8_t slot_consumed=0;
     bool pairing_cancelled=false,pairing_fired=false,pairing_candidate=false;int64_t pairing_down_us=0,pairing_candidate_us=0;
@@ -434,12 +477,13 @@ void app_main(void) {
         if(transport.mode==WHE_TRANSPORT_BLE){
             bool connected=whe_ble_ready();
             if(connected!=ble_connected){printf("BLE encrypted=%u\n",connected);ble_connected=connected;ble_armed=false;ble_sent=false;ble_layer=255;}
-            if(ble_layer!=layer){
+            portENTER_CRITICAL(&send_mux);uint32_t current_revision=studio_profile_revision;portEXIT_CRITICAL(&send_mux);
+            if(ble_layer!=layer || applied_revision!=current_revision){
                 // Deliver neutral reports before changing a layer; retry on congestion.
                 uint8_t empty[6]={0};
                 if(!connected || (whe_ble_keyboard(0,empty)==ESP_OK && whe_ble_consumer(0)==ESP_OK)){
                     if(local_profile_valid)whe_profile_load_layer(local_profile,layer,&ble_engine);
-                    ble_layer=layer;ble_armed=false;ble_sent=false;
+                    ble_layer=layer;applied_revision=current_revision;ble_armed=false;ble_sent=false;
                 }
             }
             bool all_up=true;for(unsigned i=0;i<12;i++)if(abs((int)readings[i]-(int)policy.baseline[i])>150)all_up=false;

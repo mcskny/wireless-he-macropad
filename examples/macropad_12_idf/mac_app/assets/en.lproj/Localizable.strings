@@ -547,3 +547,19 @@
 "Bluetooth ayarlarını aç" = "Open Bluetooth settings";
 "BLE modunda Layer + KEY 0 bağlantı türünü değiştirir. Layer + alt sıradaki tuşlar üç cihazı seçer." = "In BLE mode, Layer + KEY 0 changes transport. Layer + bottom-row keys select the three devices.";
 "BLE şu anda klavye ve medya çıkışı sağlar. Canlı sensör verisi ve uygulamadan ayar yazma için S3 USB bağlantısı gerekir." = "BLE currently supports keyboard and media output. Live sensor data and writing settings require the S3 USB connection.";
+
+"Bluetooth cihazları" = "Bluetooth devices";
+"Adlar bu Mac’te düzenlenebilir etiketlerdir" = "Names are editable labels on this Mac";
+"Kayıtlı" = "Paired";
+"Boş" = "Empty";
+"Durum bilinmiyor" = "Status unknown";
+"SEÇİLİ" = "SELECTED";
+"Layer + alt sıradaki sol, orta veya sağ tuşla cihazı seç. Adları Ayarlar → Bluetooth bölümünde düzenle." = "Hold Layer and press a bottom-row key to select a device. Edit labels in Settings → Bluetooth.";
+"Bu adlar bu Mac’te belirlediğin etiketlerdir; cihazlardan otomatik okunmaz." = "These are labels stored on this Mac; they are not read from the devices.";
+"BLE üzerinden ayar yazımı uyumlu C6 yazılımı gerektirir; canlı sensör grafiği için S3 USB bağlantısı gerekir." = "Writing settings over BLE requires compatible C6 firmware; live sensor charts still require the S3 USB connection.";
+
+"BLE · ayar bağlantısı hazır" = "BLE · configuration connected";
+
+"Cihazı ara" = "Find device";
+
+"Yazdır, seçili layer’ı C6’ya kaydeder. S3 kaydı ayrıdır; ESP-NOW’a geçince S3’teki eski profil C6’daki profili değiştirebilir. Analog oyun ve encoder ayarları henüz kaydedilmez." = "Write saves the selected layer to C6. S3 has a separate profile and may replace the C6 profile when switching to ESP-NOW. Analog game and encoder settings are not yet saved.";

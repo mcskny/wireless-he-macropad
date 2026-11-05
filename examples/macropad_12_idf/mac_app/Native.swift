@@ -277,8 +277,16 @@ final class MacKeyOutput {
 
 final class StudioModel: ObservableObject {
     @Published private(set) var bluetoothHIDPresent=false
+    @Published private(set) var bleControlReady=false
+    @Published private(set) var bleSlotIndex:Int?=nil
+    @Published private(set) var bleSlotMask:Int?=nil
+    private var bleStudio:BLEStudio?
+    private var blePendingLayer:Int?
+    private var bleLastLights:[[Int]]=[]
+    private var bleLightInFlight=false
     private var bluetoothStatusTimer:Timer?
     var deviceVisible:Bool {freshSensor || bluetoothHIDPresent}
+    func searchBluetooth(){bleStudio?.setEnabled(true)}
     @Published var config:Config { didSet { if let d=try? JSONEncoder().encode(config) { UserDefaults.standard.set(d,forKey:"native-config-v1") } } }
     @Published var macOutputEnabled=false {didSet {if !macOutputEnabled {macKeyOutput.releaseAll();macPressed=Array(repeating:false,count:12)}}}
     private let macKeyOutput=MacKeyOutput()
@@ -334,6 +342,12 @@ final class StudioModel: ObservableObject {
                 bytes[a*16+11] |= 0x80 | UInt8(b);bytes[b*16+11] |= 0x80 | UInt8(a)
             }
         }
+        if bleControlReady && !freshSensor {
+            hidWriteError=nil;hidWriteStatus=HIDWriteStatus(state:"writing",message:"BLE")
+            bleStudio?.writeLayer(targetLayer,bytes:bytes){[weak self] ok in
+                self?.hidWriteStatus=HIDWriteStatus(state:ok ? "saved":"error",message:ok ? "BLE · C6’ya kaydedildi" : "BLE yazımı başarısız; bağlantıyı kontrol et")
+            };return
+        }
         guard let body=try? JSONSerialization.data(withJSONObject:["layer":targetLayer,"data":bytes.map{String(format:"%02x",$0)}.joined()] as [String:Any]) else {hidWriteError="Profil hazırlanamadı.";return}
         hidWriteError=nil;hidWriteStatus=HIDWriteStatus(state:"writing",message:nil)
         var request=URLRequest(url:URL(string:"http://127.0.0.1:18768/hid-write")!);request.httpMethod="POST";request.httpBody=body;request.setValue("application/json",forHTTPHeaderField:"Content-Type");request.timeoutInterval=4
@@ -360,7 +374,16 @@ final class StudioModel: ObservableObject {
     @Published var error:String? = nil
     @Published var selected=4 { didSet { history=[] } }
     private var applyingDeviceLayer=false
-    @Published var layer=0 {didSet {if layer != oldValue && !applyingDeviceLayer && deviceLayer != nil {postLightControl(["kind":"layer","layer":layer])}}}
+    @Published var layer=0 {didSet {
+        if layer != oldValue && !applyingDeviceLayer {
+            if bleControlReady && !freshSensor {blePendingLayer=layer;syncBLELayer()}
+            else if deviceLayer != nil {postLightControl(["kind":"layer","layer":layer])}
+        }
+    }}
+    private func syncBLELayer(){
+        guard let desired=blePendingLayer,bleControlReady,let ble=bleStudio else{return}
+        ble.selectLayer(desired){[weak self] ok in if ok && self?.blePendingLayer==desired {self?.blePendingLayer=nil}}
+    }
     @Published var deviceLayer:DeviceLayer?=nil
     private var lastLightingSync:TimeInterval=0
     private func postLightControl(_ value:[String:Any]) {
@@ -378,6 +401,12 @@ final class StudioModel: ObservableObject {
             guard let effect=effects[light.baseEffect],light.color.count==7,light.color.first=="#",let rgb=Int(light.color.dropFirst(),radix:16) else{return}
             let flags=(light.colorful ? 1:0)+((light.baseEffect == "Kayan ışık" && light.colorful && light.sweepColorStyle == "tur") ? 4:0)
             profiles.append([effect,(rgb>>16)&255,(rgb>>8)&255,rgb&255,Int(max(0,min(100,min(config.brightness,light.brightness))).rounded()),Int(max(1,min(100,light.speed)).rounded()),flags])
+        }
+        if bleControlReady && !freshSensor {
+            guard profiles != bleLastLights,!bleLightInFlight,let ble=bleStudio else{return}
+            bleLightInFlight=true
+            ble.sendLights(profiles){[weak self] ok in self?.bleLightInFlight=false;if ok {self?.bleLastLights=profiles}}
+            return
         }
         guard let data=try? JSONSerialization.data(withJSONObject:profiles) else{return}
         var request=URLRequest(url:URL(string:"http://127.0.0.1:18768/lighting")!);request.httpMethod="POST";request.httpBody=data;request.setValue("application/json",forHTTPHeaderField:"Content-Type");request.timeoutInterval=1
@@ -590,9 +619,23 @@ final class StudioModel: ObservableObject {
         migrateLegacyGame()
         startServer()
         bluetoothHIDPresent=wirelessHEBluetoothHIDPresent()
+        let ble=BLEStudio();bleStudio=ble
+        ble.slotStatus={ [weak self] index,mask,deviceLayer in
+            guard let self=self else{return};self.bleSlotIndex=index;self.bleSlotMask=mask
+            if self.blePendingLayer == nil && (0..<4).contains(deviceLayer) && self.layer != deviceLayer {
+                self.applyingDeviceLayer=true;self.layer=deviceLayer;self.applyingDeviceLayer=false
+            }
+        }
+        ble.changed={ [weak self] ready in
+            guard let self=self else{return};self.bleControlReady=ready;self.bleLastLights=[];if !ready {self.bleSlotIndex=nil;self.bleSlotMask=nil}
+            if ready {self.blePendingLayer=nil}
+        }
+        ble.setEnabled(bluetoothHIDPresent)
         bluetoothStatusTimer=Timer.scheduledTimer(withTimeInterval:2.0,repeats:true){[weak self] _ in
             let present=wirelessHEBluetoothHIDPresent()
-            if self?.bluetoothHIDPresent != present {self?.bluetoothHIDPresent=present}
+            if self?.bluetoothHIDPresent != present {self?.bluetoothHIDPresent=present;self?.bleStudio?.setEnabled(present)}
+            guard let self=self else{return}
+            if self.bleControlReady && !self.freshSensor {self.syncBLELayer();self.syncLighting()}
         }
         lightingTimer=Timer.scheduledTimer(withTimeInterval:1.0/24.0,repeats:true){[weak self] _ in
             guard let self=self else{return}
@@ -657,7 +700,7 @@ final class StudioModel: ObservableObject {
             DispatchQueue.main.async { [weak self] in
                 guard let self=self else{return}; self.busy=false
                 let rate=packet?.rate_status;let bridge=packet?.bridge_status
-                if let status=packet?.hid_write_status,status.state != "idle",status != self.hidWriteStatus {self.hidWriteStatus=status}
+                if !self.bleControlReady,let status=packet?.hid_write_status,status.state != "idle",status != self.hidWriteStatus {self.hidWriteStatus=status}
                 if self.rateStatus != rate {self.rateStatus=rate}
                 if self.bridgeStatus != bridge {self.bridgeStatus=bridge}
                 let deviceLayer=packet?.connected == true ? packet?.layer_status : nil
@@ -832,13 +875,13 @@ struct MainView:View {
                 List(selection:$model.page){ForEach(pages,id:\.0){p in Label { Text(LocalizedStringKey(p.0)) } icon: { Image(systemName:p.1) }.tag(p.0)}}.listStyle(.sidebar)
                 VStack(alignment:.leading,spacing:5){
                     HStack(spacing:7){Circle().fill(model.deviceVisible ? accent : Color.orange).frame(width:8,height:8);Text(LocalizedStringKey(model.deviceVisible ? "CİHAZ GÖRÜLÜYOR" : "CİHAZ BAĞLI DEĞİL")).font(.caption2.bold()).foregroundStyle(model.deviceVisible ? accent : Color.orange)}
-                    Text(LocalizedStringKey(model.freshSensor ? "USB · sensör verisi geliyor" : model.bluetoothHIDPresent ? "BLE · klavye algılandı" : "Cihaz bağlantısı bekleniyor")).font(.caption.weight(.semibold))
+                    Text(LocalizedStringKey(model.freshSensor ? "USB · sensör verisi geliyor" : model.bleControlReady ? "BLE · ayar bağlantısı hazır" : model.bluetoothHIDPresent ? "BLE · klavye algılandı" : "Cihaz bağlantısı bekleniyor")).font(.caption.weight(.semibold))
                     if model.bluetoothHIDPresent && !model.freshSensor {Text("BLE üzerinden sensör verisi henüz desteklenmiyor").font(.caption2).foregroundStyle(.secondary)}
                 }.padding(14)
             }.navigationSplitViewColumnWidth(min:190,ideal:220)
         } detail: {
             ScrollView { VStack(alignment:.leading,spacing:18) {
-                HStack(alignment:.top){VStack(alignment:.leading,spacing:5){Text("WIRELESS HE / TEST STUDIO").font(.caption2.weight(.bold)).tracking(1.6).foregroundStyle(accent);Text(LocalizedStringKey(model.page)).font(.system(size:32,weight:.bold,design:.rounded));Text(LocalizedStringKey(subtitle)).font(.subheadline).foregroundStyle(.secondary)};Spacer();VStack(alignment:.trailing,spacing:5){Button("Yazdır",systemImage:"arrow.down.to.line"){model.writeHIDProfiles()}.buttonStyle(.borderedProminent).disabled(model.values == nil || model.hidWriteStatus?.state == "writing").help("Seçili layer’ın klavye ve medya görevlerini S3’e kaydet.");Text(verbatim:model.hidWriteError ?? (model.hidWriteStatus?.state == "saved" ? (model.hidWriteStatus?.message ?? "S3’e kaydedildi") : model.hidWriteStatus?.state == "writing" ? "S3’e yazılıyor… \(model.hidWriteStatus?.message ?? "")" : model.hidWriteStatus?.state == "error" ? (model.hidWriteStatus?.message ?? "Yazma başarısız") : "Seçili layer’ın klavye ve medya görevlerini kaydet")).font(.caption2).foregroundStyle(model.hidWriteError != nil || model.hidWriteStatus?.state == "error" ? Color.orange : Color.secondary).frame(maxWidth:360,alignment:.trailing)}}
+                HStack(alignment:.top){VStack(alignment:.leading,spacing:5){Text("WIRELESS HE / TEST STUDIO").font(.caption2.weight(.bold)).tracking(1.6).foregroundStyle(accent);Text(LocalizedStringKey(model.page)).font(.system(size:32,weight:.bold,design:.rounded));Text(LocalizedStringKey(subtitle)).font(.subheadline).foregroundStyle(.secondary)};Spacer();VStack(alignment:.trailing,spacing:5){Button("Yazdır",systemImage:"arrow.down.to.line"){model.writeHIDProfiles()}.buttonStyle(.borderedProminent).disabled((!model.freshSensor && !model.bleControlReady) || model.hidWriteStatus?.state == "writing").help(model.bleControlReady && !model.freshSensor ? "Seçili layer’ın klavye ve medya görevlerini C6’ya kaydet." : "Seçili layer’ın klavye ve medya görevlerini S3’e kaydet.");Text(verbatim:model.hidWriteError ?? (model.hidWriteStatus?.state == "saved" ? (model.hidWriteStatus?.message ?? "S3’e kaydedildi") : model.hidWriteStatus?.state == "writing" ? "S3’e yazılıyor… \(model.hidWriteStatus?.message ?? "")" : model.hidWriteStatus?.state == "error" ? (model.hidWriteStatus?.message ?? "Yazma başarısız") : "Seçili layer’ın klavye ve medya görevlerini kaydet")).font(.caption2).foregroundStyle(model.hidWriteError != nil || model.hidWriteStatus?.state == "error" ? Color.orange : Color.secondary).frame(maxWidth:360,alignment:.trailing)}}
                 if let error=model.error {Text(error).foregroundStyle(.orange).font(.caption)}
                 switch model.page {case "Katmanlar":LayersView(model:model);case "Oyun profili":GameProfileView(model:model);case "Hall ayarları":HallView(model:model);case "Aydınlatma":LightView(model:model);case "Güç ve pil":PowerView(model:model);case "Gelişmiş":AdvancedView(model:model);case "Özellikler":FeaturesView(model:model);default:LiveView(model:model)}
             }.padding(28).frame(maxWidth:.infinity,alignment:.leading)}.frame(maxWidth:.infinity,maxHeight:.infinity).background(studioBackground.ignoresSafeArea())
@@ -1027,10 +1070,28 @@ struct DeviceConnectionBadge:View {
         }
     }
 }
+struct BLEDeviceSlotsView:View {
+    @ObservedObject var model:StudioModel
+    @AppStorage("ble-slot-name-1") private var name1="Cihaz 1"
+    @AppStorage("ble-slot-name-2") private var name2="Cihaz 2"
+    @AppStorage("ble-slot-name-3") private var name3="Cihaz 3"
+    var body:some View {
+        GlassCard { VStack(alignment:.leading,spacing:10){
+            HStack {SectionTitle(title:"Bluetooth cihazları",subtitle:"Adlar bu Mac’te düzenlenebilir etiketlerdir");Spacer();Button("Cihazı ara"){model.searchBluetooth()}.disabled(model.bleControlReady)}
+            HStack(spacing:12){ForEach(0..<3){i in
+                VStack(alignment:.leading,spacing:4){Text([name1,name2,name3][i]).font(.headline)
+                    Text(LocalizedStringKey(model.bleSlotMask.map{($0 & (1<<i)) != 0 ? "Kayıtlı" : "Boş"} ?? "Durum bilinmiyor")).font(.caption)
+                    if model.bleSlotIndex==i {Text("SEÇİLİ").font(.caption2.bold()).foregroundStyle(accent)}
+                }.frame(maxWidth:.infinity,alignment:.leading).padding(12).background(Color.white.opacity(0.04),in:RoundedRectangle(cornerRadius:10))
+            }}
+            Text("Layer + alt sıradaki sol, orta veya sağ tuşla cihazı seç. Adları Ayarlar → Bluetooth bölümünde düzenle.").font(.caption).foregroundStyle(.secondary)
+        }}
+    }
+}
 struct LiveView:View {
     @ObservedObject var model:StudioModel
     @AppStorage("studio-view-3d") private var show3D=true
-    var body:some View { VStack(spacing:16){RateStatusCard(model:model);HStack(alignment:.top,spacing:16){GlassCard{VStack(alignment:.leading,spacing:14){HStack{SectionTitle(title:"Cihaz görünümü",subtitle:show3D ? "Sürükle: döndür · kaydır: yakınlaştır · tuşa tıkla" : "Bir tuşa tıklayarak kanalını seç");Spacer();Picker("Görünüm",selection:$show3D){Text("3B").tag(true);Text("2B").tag(false)}.labelsHidden().pickerStyle(.segmented).frame(width:100)};Group {if show3D {MacropadModelView(model:model,clock:model.lightingClock).frame(height:310).clipShape(RoundedRectangle(cornerRadius:16))} else {KeyPad(model:model).frame(maxWidth:.infinity)}}.overlay(alignment:.topTrailing){DeviceConnectionBadge(model:model)};HStack{Toggle("Simülasyon",isOn:$model.simulate).toggleStyle(.switch);Spacer();Toggle("Işık önizleme",isOn:$model.lightingPreview).toggleStyle(.switch)}.font(.caption);if model.simulate {HStack{Text("KEY \(model.selected) · demo").font(.caption);Slider(value:$model.demoDepth,in:0...100,step:1);Text("\(Int(model.demoDepth))%").font(.caption.monospacedDigit());Button(model.demoDepth > 0 ? "Bırak" : "Bas"){model.demoDepth = model.demoDepth > 0 ? 0 : 100}};Text("Simülasyon sensör verisini değiştirmez.").font(.caption2).foregroundStyle(.secondary)}}};VStack(spacing:16){GlassCard{VStack(alignment:.leading,spacing:12){HStack{SectionTitle(title:"Anlık basılma",subtitle:"KEY \(model.selected) · \(model.selected%4+1). satır / \(model.selected/4+1). sütun");Spacer();Text(LocalizedStringKey(model.values == nil ? "BAĞLANTI BEKLENİYOR" : "USB · CANLI")).font(.caption2.bold()).foregroundStyle(model.values == nil ? .orange : accent)};HStack(alignment:.bottom){Text(model.percent(model.selected).map{String(format:"%.1f%%",$0)} ?? "— %").font(.system(size:48,weight:.semibold,design:.rounded)).foregroundStyle(accent);Spacer();VStack(alignment:.trailing){Text("HAM ADC").font(.caption2).foregroundStyle(.secondary);Text(model.values.map{String($0[model.selected])} ?? "—").font(.title3.monospacedDigit())}};ProgressView(value:(model.percent(model.selected) ?? 0),total:100).tint(accent)}};GlassCard{VStack(alignment:.leading){SectionTitle(title:"Sinyal geçmişi",subtitle:"Ham ADC · seçili tuş · 0–4095");ZStack { Chart(model.history){p in AreaMark(x:.value("Örnek",p.id),y:.value("ADC",p.value)).foregroundStyle(LinearGradient(colors:[accent.opacity(0.22),accent.opacity(0.01)],startPoint:.top,endPoint:.bottom));LineMark(x:.value("Örnek",p.id),y:.value("ADC",p.value)).foregroundStyle(accent).lineStyle(StrokeStyle(lineWidth:2)).interpolationMethod(.linear)}.chartYScale(domain:0...4095).chartYAxis { AxisMarks(position:.trailing,values:[0,1000,2000,3000,4000]) { _ in AxisGridLine(); AxisValueLabel().foregroundStyle(.secondary) } };if model.history.isEmpty {VStack(spacing:6){Image(systemName:"waveform.path").font(.title2).foregroundStyle(accent.opacity(0.65));Text("Sinyal bekleniyor").font(.caption.weight(.medium));Text("Cihaz bağlandığında grafik burada görünür").font(.caption2).foregroundStyle(.secondary)}.padding(12).background(.ultraThinMaterial,in:RoundedRectangle(cornerRadius:12))}}.frame(height:160)}}}}
+    var body:some View { VStack(spacing:16){RateStatusCard(model:model);BLEDeviceSlotsView(model:model);HStack(alignment:.top,spacing:16){GlassCard{VStack(alignment:.leading,spacing:14){HStack{SectionTitle(title:"Cihaz görünümü",subtitle:show3D ? "Sürükle: döndür · kaydır: yakınlaştır · tuşa tıkla" : "Bir tuşa tıklayarak kanalını seç");Spacer();Picker("Görünüm",selection:$show3D){Text("3B").tag(true);Text("2B").tag(false)}.labelsHidden().pickerStyle(.segmented).frame(width:100)};Group {if show3D {MacropadModelView(model:model,clock:model.lightingClock).frame(height:310).clipShape(RoundedRectangle(cornerRadius:16))} else {KeyPad(model:model).frame(maxWidth:.infinity)}}.overlay(alignment:.topTrailing){DeviceConnectionBadge(model:model)};HStack{Toggle("Simülasyon",isOn:$model.simulate).toggleStyle(.switch);Spacer();Toggle("Işık önizleme",isOn:$model.lightingPreview).toggleStyle(.switch)}.font(.caption);if model.simulate {HStack{Text("KEY \(model.selected) · demo").font(.caption);Slider(value:$model.demoDepth,in:0...100,step:1);Text("\(Int(model.demoDepth))%").font(.caption.monospacedDigit());Button(model.demoDepth > 0 ? "Bırak" : "Bas"){model.demoDepth = model.demoDepth > 0 ? 0 : 100}};Text("Simülasyon sensör verisini değiştirmez.").font(.caption2).foregroundStyle(.secondary)}}};VStack(spacing:16){GlassCard{VStack(alignment:.leading,spacing:12){HStack{SectionTitle(title:"Anlık basılma",subtitle:"KEY \(model.selected) · \(model.selected%4+1). satır / \(model.selected/4+1). sütun");Spacer();Text(LocalizedStringKey(model.values == nil ? "BAĞLANTI BEKLENİYOR" : "USB · CANLI")).font(.caption2.bold()).foregroundStyle(model.values == nil ? .orange : accent)};HStack(alignment:.bottom){Text(model.percent(model.selected).map{String(format:"%.1f%%",$0)} ?? "— %").font(.system(size:48,weight:.semibold,design:.rounded)).foregroundStyle(accent);Spacer();VStack(alignment:.trailing){Text("HAM ADC").font(.caption2).foregroundStyle(.secondary);Text(model.values.map{String($0[model.selected])} ?? "—").font(.title3.monospacedDigit())}};ProgressView(value:(model.percent(model.selected) ?? 0),total:100).tint(accent)}};GlassCard{VStack(alignment:.leading){SectionTitle(title:"Sinyal geçmişi",subtitle:"Ham ADC · seçili tuş · 0–4095");ZStack { Chart(model.history){p in AreaMark(x:.value("Örnek",p.id),y:.value("ADC",p.value)).foregroundStyle(LinearGradient(colors:[accent.opacity(0.22),accent.opacity(0.01)],startPoint:.top,endPoint:.bottom));LineMark(x:.value("Örnek",p.id),y:.value("ADC",p.value)).foregroundStyle(accent).lineStyle(StrokeStyle(lineWidth:2)).interpolationMethod(.linear)}.chartYScale(domain:0...4095).chartYAxis { AxisMarks(position:.trailing,values:[0,1000,2000,3000,4000]) { _ in AxisGridLine(); AxisValueLabel().foregroundStyle(.secondary) } };if model.history.isEmpty {VStack(spacing:6){Image(systemName:"waveform.path").font(.title2).foregroundStyle(accent.opacity(0.65));Text("Sinyal bekleniyor").font(.caption.weight(.medium));Text("Cihaz bağlandığında grafik burada görünür").font(.caption2).foregroundStyle(.secondary)}.padding(12).background(.ultraThinMaterial,in:RoundedRectangle(cornerRadius:12))}}.frame(height:160)}}}}
         HStack(alignment:.top,spacing:16){GlassCard{VStack(alignment:.leading,spacing:12){SectionTitle(title:"Kalibrasyon",subtitle:"Tuş başına serbest ve tam basılı değerleri");Text(verbatim:studioDisplay("Serbest: \(model.config.calibration[model.channelMap[model.selected]].free.map(String.init) ?? "—")  ·  Basılı: \(model.config.calibration[model.channelMap[model.selected]].pressed.map(String.init) ?? "—")")).font(.caption.monospacedDigit()).foregroundStyle(.secondary);Button("Tüm serbest konumları kaydet"){model.captureAll()}.disabled(model.values == nil);HStack{Button("Seçili: serbest"){model.capture(false)};Button("Seçili: tam basılı"){model.capture(true)}}.disabled(model.values == nil);Text("Bu değerler yalnızca bu Mac uygulamasında saklanır.").font(.caption2).foregroundStyle(.secondary)}};GlassCard{VStack(alignment:.leading,spacing:12){SectionTitle(title:"Kanal tanılama",subtitle:"Her tuş için bağlı olduğu ham ADC kanalını eşle");LazyVGrid(columns:Array(repeating:GridItem(.flexible()),count:3),spacing:7){ForEach(0..<12){position in let i=(position%3)*4+position/3;VStack(alignment:.leading){Text(verbatim:studioDisplay("\(position/3+1). sıra · \(position%3+1). sütun")).font(.caption2).foregroundStyle(.secondary);Menu {ForEach(0..<12){channel in Button("ADC \(channel)"){model.assignChannel(channel,toKey:i)}}} label:{Text(verbatim:studioDisplay("Eşle · ADC \(model.channelMap[i])")).font(.caption2)};Text(model.values.map{String($0[i])} ?? "—").font(.caption.monospacedDigit().bold()).foregroundStyle(model.values.map{($0[i]==0 || $0[i]==4095)} == true ? .orange : .primary);Text(model.ranges[i].map{"\($0.lowerBound) – \($0.upperBound)"} ?? "—").font(.caption2).foregroundStyle(.secondary)}.frame(maxWidth:.infinity,alignment:.leading).padding(7).background(.white.opacity(0.04),in:RoundedRectangle(cornerRadius:7))}};Button("Min / maks sıfırla"){model.ranges=Array(repeating:nil,count:12)}.font(.caption);Text("Aynı kanalı seçersen iki tuşun kanalları yer değiştirir. Kalibrasyon yokken tuş hareketi yaklaşık gösterilir; kesin derinlik için kalibrasyon yap.").font(.caption2).foregroundStyle(.secondary)}}}}
         SensorToolsView(model:model)
         SerialSelectionView(model:model)
@@ -1255,7 +1316,7 @@ struct LayersView:View {
                     }
                     if let assignment=behavior.primaryKey, assignment.label == model.config.layers[model.layer].keys[model.selected] {Text(verbatim:studioDisplay("Bağlı tuş: \(assignmentName(assignment))")).font(.caption2).foregroundStyle(.secondary)}
                     else if !model.config.layers[model.layer].keys[model.selected].isEmpty {Text("Mevcut görev açıklaması korunuyor; gerçek tuş kodu için listeden yeniden seç.").font(.caption2).foregroundStyle(.secondary)}
-                    Text("Yazdır, seçili layer’ın desteklenen klavye ve medya görevlerini S3’e kaydeder. Analog oyun ve encoder ayarları henüz kaydedilmez.").font(.caption).foregroundStyle(.secondary)
+                    Text(LocalizedStringKey(model.bleControlReady && !model.freshSensor ? "Yazdır, seçili layer’ı C6’ya kaydeder. S3 kaydı ayrıdır; ESP-NOW’a geçince S3’teki eski profil C6’daki profili değiştirebilir. Analog oyun ve encoder ayarları henüz kaydedilmez." : "Yazdır, seçili layer’ın desteklenen klavye ve medya görevlerini S3’e kaydeder. Analog oyun ve encoder ayarları henüz kaydedilmez.")).font(.caption).foregroundStyle(.secondary)
                     if behavior.mode == "twoStage" {
                         Text("2. KADEME GÖREVİ").font(.caption2.bold()).tracking(1).foregroundStyle(accent)
                         taskDisplay(behavior.secondAction)
@@ -1809,6 +1870,9 @@ struct StudioBackup:Codable {
     var customColors:[String]? = nil
 }
 struct StudioSettingsView:View {
+    @AppStorage("ble-slot-name-1") private var bleSlot1="Cihaz 1"
+    @AppStorage("ble-slot-name-2") private var bleSlot2="Cihaz 2"
+    @AppStorage("ble-slot-name-3") private var bleSlot3="Cihaz 3"
     @AppStorage("studio-appearance") private var appearance="system"
     @AppStorage("studio-start-page") private var startPage="Canlı test"
     @AppStorage("studio-language") private var language="tr"
@@ -1820,8 +1884,12 @@ struct StudioSettingsView:View {
                 Picker("Başlangıç sayfası",selection:$startPage){ForEach(["Canlı test","Katmanlar","Oyun profili","Hall ayarları","Aydınlatma","Güç ve pil","Gelişmiş"],id:\.self){Text(LocalizedStringKey($0)).tag($0)}}
             }
             Section("Bluetooth") {
+                TextField("Sol · cihaz adı",text:$bleSlot1)
+                TextField("Orta · cihaz adı",text:$bleSlot2)
+                TextField("Sağ · cihaz adı",text:$bleSlot3)
+                Text("Bu adlar bu Mac’te belirlediğin etiketlerdir; cihazlardan otomatik okunmaz.").font(.caption).foregroundStyle(.secondary)
                 Text("BLE modunda Layer + KEY 0 bağlantı türünü değiştirir. Layer + alt sıradaki tuşlar üç cihazı seçer.").font(.caption)
-                Text("BLE şu anda klavye ve medya çıkışı sağlar. Canlı sensör verisi ve uygulamadan ayar yazma için S3 USB bağlantısı gerekir.").font(.caption).foregroundStyle(.secondary)
+                Text("BLE üzerinden ayar yazımı uyumlu C6 yazılımı gerektirir; canlı sensör grafiği için S3 USB bağlantısı gerekir.").font(.caption).foregroundStyle(.secondary)
                 Button("Bluetooth ayarlarını aç") {if let url=URL(string:"x-apple.systempreferences:com.apple.BluetoothSettings") {NSWorkspace.shared.open(url)}}
             }
             Section("Test ortamı") {
@@ -1829,7 +1897,7 @@ struct StudioSettingsView:View {
                 LabeledContent("Yerel sunucu",value:"127.0.0.1:18768")
                 Text("Bu sürüm yerel test ortamına ve ESP-IDF Python kurulumuna bağlıdır.").font(.caption).foregroundStyle(.secondary)
             }
-        }.formStyle(.grouped).frame(width:480,height:340).environment(\.locale,Locale(identifier:language)).preferredColorScheme(appearance == "dark" ? .dark : appearance == "light" ? .light : nil)
+        }.formStyle(.grouped).frame(minWidth:480,minHeight:440).environment(\.locale,Locale(identifier:language)).preferredColorScheme(appearance == "dark" ? .dark : appearance == "light" ? .light : nil)
     }
 }
 final class AppDelegate:NSObject,NSApplicationDelegate,NSWindowDelegate,NSMenuDelegate {
