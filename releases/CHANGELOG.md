@@ -5,6 +5,13 @@ Versions are independent. Tags are `c6/vX.Y.Z`, `s3/vX.Y.Z`, and
 prototype; source commits preserve changes between releases. A version is never
 reused or overwritten after publication.
 
+## Studio 0.1.8 — 2026-11-06 (experimental pre-release)
+
+- Track S3 writes independently of BLE connection state and report a timeout instead of remaining indefinitely in progress.
+- Resend lighting after changes to the global brightness limit. Dim the Bluetooth devices card in ESP-NOW mode.
+- Live press indicator follows the most pressed calibrated key and disables implicit animation.
+- User confirmed S3 write completion, ESP-NOW and BLE lights turning off at 0% global brightness, and responsive live press display on the current hardware.
+
 ## Studio 0.1.7 — 2026-11-06 (experimental pre-release)
 
 - Collapses calibration, channel diagnostics and sensor tools behind Advanced features in Live test.

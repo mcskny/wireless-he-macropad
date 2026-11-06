@@ -284,6 +284,8 @@ final class StudioModel: ObservableObject {
     private var blePendingLayer:Int?
     private var bleLastLights:[[Int]]=[]
     private var bleLightInFlight=false
+    private var s3WriteToken:UUID?
+    private var s3WriteAccepted=false
     private var bluetoothStatusTimer:Timer?
     var deviceVisible:Bool {freshSensor || bluetoothHIDPresent}
     var usingBLE:Bool { !freshSensor && (bleControlReady || bluetoothHIDPresent || layerBank == "ble") }
@@ -291,6 +293,9 @@ final class StudioModel: ObservableObject {
     @Published var config:Config { didSet {
         if let d=try? JSONEncoder().encode(config) { UserDefaults.standard.set(d,forKey:"native-config-v1") }
         if let d=try? JSONEncoder().encode(config.layers) { UserDefaults.standard.set(d,forKey:"native-layers-"+layerBank) }
+        if config.brightness != oldValue.brightness {
+            DispatchQueue.main.asyncAfter(deadline:.now()+1.05) { [weak self] in self?.syncLighting() }
+        }
     } }
     @Published private(set) var layerBank="espnow"
     func selectLayerBank(_ bank:String) {
@@ -363,8 +368,14 @@ final class StudioModel: ObservableObject {
         }
         guard let body=try? JSONSerialization.data(withJSONObject:["layer":targetLayer,"data":bytes.map{String(format:"%02x",$0)}.joined()] as [String:Any]) else {hidWriteError="Profil hazırlanamadı.";return}
         hidWriteError=nil;hidWriteStatus=HIDWriteStatus(state:"writing",message:nil)
+        let token=UUID();s3WriteToken=token;s3WriteAccepted=false
+        DispatchQueue.main.asyncAfter(deadline:.now()+30) { [weak self] in
+            guard let self=self,self.s3WriteToken == token else{return}
+            self.s3WriteToken=nil;self.s3WriteAccepted=false
+            self.hidWriteStatus=HIDWriteStatus(state:"error",message:"S3 yanıtı zaman aşımına uğradı; bağlantıyı kontrol edip tekrar dene.")
+        }
         var request=URLRequest(url:URL(string:"http://127.0.0.1:18768/hid-write")!);request.httpMethod="POST";request.httpBody=body;request.setValue("application/json",forHTTPHeaderField:"Content-Type");request.timeoutInterval=4
-        URLSession.shared.dataTask(with:request){[weak self] _,response,error in DispatchQueue.main.async{guard let self=self else{return};if error != nil || (response as? HTTPURLResponse)?.statusCode != 202 {self.hidWriteStatus=HIDWriteStatus(state:"error",message:"Yazma başlatılamadı; S3 bağlantısını kontrol et.")}}}.resume()
+        URLSession.shared.dataTask(with:request){[weak self] _,response,error in DispatchQueue.main.async{guard let self=self,self.s3WriteToken == token else{return};if error != nil || (response as? HTTPURLResponse)?.statusCode != 202 {self.s3WriteToken=nil;self.s3WriteAccepted=false;self.hidWriteStatus=HIDWriteStatus(state:"error",message:"Yazma başlatılamadı; S3 bağlantısını kontrol et.")} else {self.s3WriteAccepted=true}}}.resume()
     }
     @Published private(set) var sensorSerialPort:String? = nil
     @Published private(set) var rawValues:[Int]? = nil
@@ -714,13 +725,17 @@ final class StudioModel: ObservableObject {
         nextPollTime=now + ((values == nil || (!visible && !driveOutputEnabled && !macOutputEnabled)) ? 0.25 : 0.02)
         if let p=task, !p.isRunning { error="Yerel sunucu çalışmıyor. 18768 portunu kontrol edip uygulamayı yeniden açın."; values=nil;rateStatus=nil;bridgeStatus=nil; return }
         busy=true
+        let s3PollToken=s3WriteAccepted ? s3WriteToken : nil
         var req=URLRequest(url:URL(string:"http://127.0.0.1:18768/state")!); req.cachePolicy = .reloadIgnoringLocalCacheData; req.timeoutInterval=1
         URLSession.shared.dataTask(with:req) { [weak self] data,_,_ in
             let packet=data.flatMap { try? JSONDecoder().decode(Packet.self,from:$0) }
             DispatchQueue.main.async { [weak self] in
                 guard let self=self else{return}; self.busy=false
                 let rate=packet?.rate_status;let bridge=packet?.bridge_status
-                if !self.bleControlReady,let status=packet?.hid_write_status,status.state != "idle",status != self.hidWriteStatus {self.hidWriteStatus=status}
+                if let token=s3PollToken,self.s3WriteToken == token,self.s3WriteAccepted,let status=packet?.hid_write_status,status.state != "idle" {
+                    if status != self.hidWriteStatus {self.hidWriteStatus=status}
+                    if status.state == "saved" || status.state == "error" {self.s3WriteToken=nil;self.s3WriteAccepted=false}
+                }
                 if self.rateStatus != rate {self.rateStatus=rate}
                 if self.bridgeStatus != bridge {self.bridgeStatus=bridge}
                 let deviceLayer=packet?.connected == true ? packet?.layer_status : nil
@@ -1110,14 +1125,16 @@ struct BLEDeviceSlotsView:View {
                 }.frame(maxWidth:.infinity,alignment:.leading).padding(12).background(Color.white.opacity(0.04),in:RoundedRectangle(cornerRadius:10))
             }}
             Text("Layer + alt sıradaki sol, orta veya sağ tuşla cihazı seç. Adları Ayarlar → Bluetooth bölümünde düzenle.").font(.caption).foregroundStyle(.secondary)
-        }}
+        }}.disabled(!model.usingBLE).opacity(model.usingBLE ? 1 : 0.45)
     }
 }
 struct LiveView:View {
     @ObservedObject var model:StudioModel
     @AppStorage("studio-view-3d") private var show3D=true
     @State private var showAdvanced=false
-    var body:some View { VStack(spacing:16){RateStatusCard(model:model);BLEDeviceSlotsView(model:model);HStack(alignment:.top,spacing:16){GlassCard{VStack(alignment:.leading,spacing:14){HStack{SectionTitle(title:"Cihaz görünümü",subtitle:show3D ? "Sürükle: döndür · kaydır: yakınlaştır" : "2B cihaz görünümü");Spacer();Picker("Görünüm",selection:$show3D){Text("3B").tag(true);Text("2B").tag(false)}.labelsHidden().pickerStyle(.segmented).frame(width:100)};Group {if show3D {MacropadModelView(model:model,clock:model.lightingClock).frame(height:310).clipShape(RoundedRectangle(cornerRadius:16))} else {KeyPad(model:model,showLabels:false).frame(maxWidth:.infinity)}}.overlay(alignment:.topTrailing){DeviceConnectionBadge(model:model)};HStack{Toggle("Simülasyon",isOn:$model.simulate).toggleStyle(.switch);Spacer();Toggle("Işık önizleme",isOn:$model.lightingPreview).toggleStyle(.switch)}.font(.caption);if model.simulate {HStack{Text("Demo").font(.caption);Slider(value:$model.demoDepth,in:0...100,step:1);Text("\(Int(model.demoDepth))%").font(.caption.monospacedDigit());Button(model.demoDepth > 0 ? "Bırak" : "Bas"){model.demoDepth = model.demoDepth > 0 ? 0 : 100}};Text("Simülasyon sensör verisini değiştirmez.").font(.caption2).foregroundStyle(.secondary)}}};if !model.usingBLE {VStack(spacing:16){GlassCard{VStack(alignment:.leading,spacing:12){HStack{SectionTitle(title:"Anlık basılma");Spacer();Text(LocalizedStringKey(model.values == nil ? "BAĞLANTI BEKLENİYOR" : "USB · CANLI")).font(.caption2.bold()).foregroundStyle(model.values == nil ? .orange : accent)};HStack(alignment:.bottom){Text(model.percent(model.selected).map{String(format:"%.1f%%",$0)} ?? "— %").font(.system(size:48,weight:.semibold,design:.rounded)).foregroundStyle(accent);Spacer();VStack(alignment:.trailing){Text("HAM ADC").font(.caption2).foregroundStyle(.secondary);Text(model.values.map{String($0[model.selected])} ?? "—").font(.title3.monospacedDigit())}};ProgressView(value:(model.percent(model.selected) ?? 0),total:100).tint(accent)}};GlassCard{VStack(alignment:.leading){SectionTitle(title:"Sinyal geçmişi",subtitle:"Ham ADC · 0–4095");ZStack { Chart(model.history){p in AreaMark(x:.value("Örnek",p.id),y:.value("ADC",p.value)).foregroundStyle(LinearGradient(colors:[accent.opacity(0.22),accent.opacity(0.01)],startPoint:.top,endPoint:.bottom));LineMark(x:.value("Örnek",p.id),y:.value("ADC",p.value)).foregroundStyle(accent).lineStyle(StrokeStyle(lineWidth:2)).interpolationMethod(.linear)}.chartYScale(domain:0...4095).chartYAxis { AxisMarks(position:.trailing,values:[0,1000,2000,3000,4000]) { _ in AxisGridLine(); AxisValueLabel().foregroundStyle(.secondary) } };if model.history.isEmpty {VStack(spacing:6){Image(systemName:"waveform.path").font(.title2).foregroundStyle(accent.opacity(0.65));Text("Sinyal bekleniyor").font(.caption.weight(.medium));Text("Cihaz bağlandığında grafik burada görünür").font(.caption2).foregroundStyle(.secondary)}.padding(12).background(.ultraThinMaterial,in:RoundedRectangle(cornerRadius:12))}}.frame(height:160)}}}}}
+    private var currentKey:Int? {(0..<12).compactMap{key in model.percent(key).map{(key,$0)}}.max{a,b in a.1 < b.1}?.0}
+    private var currentPress:Double? {currentKey.flatMap{model.percent($0)}}
+    var body:some View { VStack(spacing:16){RateStatusCard(model:model);BLEDeviceSlotsView(model:model);HStack(alignment:.top,spacing:16){GlassCard{VStack(alignment:.leading,spacing:14){HStack{SectionTitle(title:"Cihaz görünümü",subtitle:show3D ? "Sürükle: döndür · kaydır: yakınlaştır" : "2B cihaz görünümü");Spacer();Picker("Görünüm",selection:$show3D){Text("3B").tag(true);Text("2B").tag(false)}.labelsHidden().pickerStyle(.segmented).frame(width:100)};Group {if show3D {MacropadModelView(model:model,clock:model.lightingClock).frame(height:310).clipShape(RoundedRectangle(cornerRadius:16))} else {KeyPad(model:model,showLabels:false).frame(maxWidth:.infinity)}}.overlay(alignment:.topTrailing){DeviceConnectionBadge(model:model)};HStack{Toggle("Simülasyon",isOn:$model.simulate).toggleStyle(.switch);Spacer();Toggle("Işık önizleme",isOn:$model.lightingPreview).toggleStyle(.switch)}.font(.caption);if model.simulate {HStack{Text("Demo").font(.caption);Slider(value:$model.demoDepth,in:0...100,step:1);Text("\(Int(model.demoDepth))%").font(.caption.monospacedDigit());Button(model.demoDepth > 0 ? "Bırak" : "Bas"){model.demoDepth = model.demoDepth > 0 ? 0 : 100}};Text("Simülasyon sensör verisini değiştirmez.").font(.caption2).foregroundStyle(.secondary)}}};if !model.usingBLE {VStack(spacing:16){GlassCard{VStack(alignment:.leading,spacing:12){HStack{SectionTitle(title:"Anlık basılma");Spacer();Text(LocalizedStringKey(model.values == nil ? "BAĞLANTI BEKLENİYOR" : "USB · CANLI")).font(.caption2.bold()).foregroundStyle(model.values == nil ? .orange : accent)};HStack(alignment:.bottom){Text(currentPress.map{String(format:"%.1f%%",$0)} ?? "— %").font(.system(size:48,weight:.semibold,design:.rounded)).foregroundStyle(accent);Spacer();VStack(alignment:.trailing){Text("HAM ADC").font(.caption2).foregroundStyle(.secondary);Text(currentKey.flatMap{key in model.values.map{String($0[key])}} ?? "—").font(.title3.monospacedDigit())}};ProgressView(value:currentPress ?? 0,total:100).tint(accent).transaction{$0.animation=nil}}};GlassCard{VStack(alignment:.leading){SectionTitle(title:"Sinyal geçmişi",subtitle:"Ham ADC · 0–4095");ZStack { Chart(model.history){p in AreaMark(x:.value("Örnek",p.id),y:.value("ADC",p.value)).foregroundStyle(LinearGradient(colors:[accent.opacity(0.22),accent.opacity(0.01)],startPoint:.top,endPoint:.bottom));LineMark(x:.value("Örnek",p.id),y:.value("ADC",p.value)).foregroundStyle(accent).lineStyle(StrokeStyle(lineWidth:2)).interpolationMethod(.linear)}.chartYScale(domain:0...4095).chartYAxis { AxisMarks(position:.trailing,values:[0,1000,2000,3000,4000]) { _ in AxisGridLine(); AxisValueLabel().foregroundStyle(.secondary) } };if model.history.isEmpty {VStack(spacing:6){Image(systemName:"waveform.path").font(.title2).foregroundStyle(accent.opacity(0.65));Text("Sinyal bekleniyor").font(.caption.weight(.medium));Text("Cihaz bağlandığında grafik burada görünür").font(.caption2).foregroundStyle(.secondary)}.padding(12).background(.ultraThinMaterial,in:RoundedRectangle(cornerRadius:12))}}.frame(height:160)}}}}}
         HStack {Button {withAnimation(.easeInOut(duration:0.2)){showAdvanced.toggle()}} label:{Label("Gelişmiş özellikler",systemImage:showAdvanced ? "chevron.up" : "chevron.down")}.accessibilityValue(showAdvanced ? "Açık" : "Kapalı");Spacer()}
         if showAdvanced {
         HStack(alignment:.top,spacing:16){GlassCard{VStack(alignment:.leading,spacing:12){SectionTitle(title:"Kalibrasyon",subtitle:"Tuş başına serbest ve tam basılı değerleri");Text(verbatim:studioDisplay("Serbest: \(model.config.calibration[model.channelMap[model.selected]].free.map(String.init) ?? "—")  ·  Basılı: \(model.config.calibration[model.channelMap[model.selected]].pressed.map(String.init) ?? "—")")).font(.caption.monospacedDigit()).foregroundStyle(.secondary);Button("Tüm serbest konumları kaydet"){model.captureAll()}.disabled(model.values == nil);HStack{Button("Seçili: serbest"){model.capture(false)};Button("Seçili: tam basılı"){model.capture(true)}}.disabled(model.values == nil);Text("Bu değerler yalnızca bu Mac uygulamasında saklanır.").font(.caption2).foregroundStyle(.secondary)}};GlassCard{VStack(alignment:.leading,spacing:12){SectionTitle(title:"Kanal tanılama",subtitle:"Her tuş için bağlı olduğu ham ADC kanalını eşle");LazyVGrid(columns:Array(repeating:GridItem(.flexible()),count:3),spacing:7){ForEach(0..<12){position in let i=(position%3)*4+position/3;VStack(alignment:.leading){Text(verbatim:studioDisplay("\(position/3+1). sıra · \(position%3+1). sütun")).font(.caption2).foregroundStyle(.secondary);Menu {ForEach(0..<12){channel in Button("ADC \(channel)"){model.assignChannel(channel,toKey:i)}}} label:{Text(verbatim:studioDisplay("Eşle · ADC \(model.channelMap[i])")).font(.caption2)};Text(model.values.map{String($0[i])} ?? "—").font(.caption.monospacedDigit().bold()).foregroundStyle(model.values.map{($0[i]==0 || $0[i]==4095)} == true ? .orange : .primary);Text(model.ranges[i].map{"\($0.lowerBound) – \($0.upperBound)"} ?? "—").font(.caption2).foregroundStyle(.secondary)}.frame(maxWidth:.infinity,alignment:.leading).padding(7).background(.white.opacity(0.04),in:RoundedRectangle(cornerRadius:7))}};Button("Min / maks sıfırla"){model.ranges=Array(repeating:nil,count:12)}.font(.caption);Text("Aynı kanalı seçersen iki tuşun kanalları yer değiştirir. Kalibrasyon yokken tuş hareketi yaklaşık gösterilir; kesin derinlik için kalibrasyon yap.").font(.caption2).foregroundStyle(.secondary)}}}}
