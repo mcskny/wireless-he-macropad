@@ -126,9 +126,6 @@ The **test-bridge** C6 wiring uses D0–D3 for multiplexer selection, D4 for ADC
 | [`examples/macropad_12_idf/mac_app/`](examples/macropad_12_idf/mac_app/) | Wireless HE Studio macOS app |
 | [`examples/lighting_espnow_lab/`](examples/lighting_espnow_lab/) | Lighting engine and protocol experiments |
 | [`examples/crossover_analog/`](examples/crossover_analog/) | Earlier CrossOver analog-controller experiment |
-| [`Docs/Proje_Rehberi.md`](Docs/Proje_Rehberi.md) | Detailed Turkish technical guide |
-| [`Docs/BLE_Tasarim.md`](Docs/BLE_Tasarim.md) | Direct BLE mode architecture and remaining validation (Turkish) |
-| [`output/pdf/Wireless_HE_Proje_Rehberi.pdf`](output/pdf/Wireless_HE_Proje_Rehberi.pdf) | Consolidated project guide (Turkish) |
 | [`tools/progress.py`](tools/progress.py) | Generates the Turkish project progress map |
 
 The earlier Assetto Corsa steering/throttle/brake experiment used a **wired sensor platform and a CrossOver virtual-controller bridge**. It does not demonstrate native analog gamepad output from the current S3 dongle.
@@ -164,7 +161,7 @@ For the macOS app, see the [Studio README](examples/macropad_12_idf/mac_app/READ
 
 ## Versioning and releases
 
-C6 firmware, S3 firmware, and Studio use separate version numbers and GitHub releases. See [release notes](releases/CHANGELOG.md), [versions](releases/versions.json), and the [developer handoff](Docs/DEVIR.md). Published tags are immutable. Initial releases are pre-releases; the Studio source currently has machine-specific runtime paths, so a portable binary is not claimed.
+C6 firmware, S3 firmware, and Studio use separate version numbers and GitHub releases. See [release notes](releases/CHANGELOG.md), [versions](releases/versions.json). Published tags are immutable. Initial releases are pre-releases; the Studio source currently has machine-specific runtime paths, so a portable binary is not claimed.
 
 ## License
 

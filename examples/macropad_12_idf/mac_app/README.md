@@ -1,10 +1,10 @@
 > **Studio 0.1.1:** Canlı test ve aydınlatmadaki 2B/3B modeller bağlantı durumunu gösterir. BLE klavye varlığı Mac'in HID aygıtları üzerinden algılanır; bu, sensör telemetrisi veya ayar yazma anlamına gelmez. BLE üzerinden canlı sensör, profil ve aydınlatma yapılandırması henüz uygulanmadı.
 
-> **Güncel durum — 5 Kasım 2026:** Bu dosyanın aşağıdaki tarihli test notları kendi dönemine aittir. Projenin güncel C6/S3, BLE, HID ve doğrulama durumu için [bütünleşik rehbere](../../../Docs/Proje_Rehberi.md) bakın.
+> **Güncel durum — 5 Kasım 2026:** Bu dosyanın aşağıdaki tarihli test notları kendi dönemine aittir. Projenin güncel C6/S3, BLE, HID ve doğrulama durumu için [ana README’ye](../../../Readme.md) bakın.
 
 # Wireless HE Studio — macOS test uygulaması
 
-> **Güncel not — 2 Kasım 2026:** Aşağıdaki eski bölümlerde bazı özellikler yalnızca taslak olarak anlatılabilir. Belgenin sonundaki Mac klavye çıktısı ve sensör kalibrasyonu bölümleri bu eski açıklamaları günceller. Projenin tüm bileşenleri ve doğrulama durumu için [birleşik PDF](../../../output/pdf/Wireless_HE_Proje_Rehberi.pdf) de kullanılabilir.
+> **Güncel not — 2 Kasım 2026:** Aşağıdaki eski bölümlerde bazı özellikler yalnızca taslak olarak anlatılabilir. Belgenin sonundaki Mac klavye çıktısı ve sensör kalibrasyonu bölümleri bu eski açıklamaları günceller. Projenin tüm bileşenleri ve doğrulama durumu için [ana README](../../../Readme.md) de kullanılabilir.
 
 > **Durum: yerel test ve tasarım uygulaması.** Bu belge, mevcut macOS uygulamasının ne yaptığını, neleri henüz yapmadığını ve uygulama üzerinde çalışacak bir geliştirici veya yapay zekânın dikkat etmesi gerekenleri açıklar. Kod her zaman güncel davranış için asıl kaynaktır. Son gözden geçirme: **31 Ekim 2026**.
 

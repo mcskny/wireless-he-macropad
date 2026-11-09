@@ -1,8 +1,8 @@
-> **Güncel durum — 5 Kasım 2026:** Bu dosyanın aşağıdaki tarihli test notları kendi dönemine aittir. Projenin güncel C6/S3, BLE, HID ve doğrulama durumu için [bütünleşik rehbere](../../Docs/Proje_Rehberi.md) bakın.
+> **Güncel durum — 5 Kasım 2026:** Bu dosyanın aşağıdaki tarihli test notları kendi dönemine aittir. Projenin güncel C6/S3, BLE, HID ve doğrulama durumu için [ana README’ye](../../Readme.md) bakın.
 
 # Macropad USB test platformu
 
-> **Güncel not — 2 Kasım 2026:** Native Studio'da bazı klavye ve medya görevleri için isteğe bağlı Mac çıktısı ve CrossOver için ayrı analog test köprüsü vardır; bunlar cihaza ayar yazmaz. Güncel kapsam [Studio README](mac_app/README.md), tüm proje ise [birleşik PDF](../../output/pdf/Wireless_HE_Proje_Rehberi.pdf) içindedir.
+> **Güncel not — 2 Kasım 2026:** Native Studio'da bazı klavye ve medya görevleri için isteğe bağlı Mac çıktısı ve CrossOver için ayrı analog test köprüsü vardır; bunlar cihaza ayar yazmaz. Güncel kapsam [Studio README](mac_app/README.md), tüm proje ise [ana README](../../Readme.md) içindedir.
 
 Bu bağımsız ESP-IDF örneği, gerçek cihazın C6 göndericisi veya S3 alıcısı değildir. Test için klasik ESP32 DevKit kullanır; radyo, ESP-NOW, USB HID ve üretim modları kullanılmaz. Mac üzerinde `server.py` seri portu okur ve yalnızca `127.0.0.1:8765` adresindeki arayüze aktarır.
 

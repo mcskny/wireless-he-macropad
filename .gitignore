@@ -36,3 +36,10 @@ backups/
 **/*.bak
 **/.history/
 output/mac/
+
+# Local-only project handoff and generated guide
+/Docs/BLE_Tasarim.md
+/Docs/DEVIR.md
+/Docs/Proje_Rehberi.md
+/output/pdf/Wireless_HE_Proje_Rehberi.pdf
+/tools/build_project_guide.py
