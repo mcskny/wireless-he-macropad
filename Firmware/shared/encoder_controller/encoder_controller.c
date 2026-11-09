@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 #include "encoder_controller.h"
 #include <string.h>
 #define WHE_LONG_PRESS_MS 2000u

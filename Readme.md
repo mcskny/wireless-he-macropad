@@ -165,6 +165,4 @@ C6 firmware, S3 firmware, and Studio use separate version numbers and GitHub rel
 
 ## License
 
-The project is distributed under the [GNU General Public License, version 3](LICENSE) (GPL-3.0-only), unless a file or third-party component specifies different terms. GPLv3 permits commercial use subject to its conditions, including source availability when applicable; no separate commercial permission is required.
-
-Some files carry explicit MIT / MIT-only notices and remain available under those terms ([MIT license text](LICENSES/MIT.txt)). Previously published MIT versions and rights granted under them are unaffected. Third-party components retain their own licenses.
+This project is licensed under the [GNU General Public License, version 3](LICENSE) (GPL-3.0-only). Third-party components retain their own licenses.

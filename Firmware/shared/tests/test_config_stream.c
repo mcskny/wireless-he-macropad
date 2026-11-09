@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 #include "config_stream.h"
 #include <assert.h>
 #include <stdio.h>

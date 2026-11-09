@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // Experimental CrossOver-local SDL2 bridge. Does not patch CrossOver files.
 #include <SDL.h>
 #include <arpa/inet.h>

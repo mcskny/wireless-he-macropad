@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT-only
+# SPDX-License-Identifier: GPL-3.0-only
 # Copyright (c) 2026 ESP32-C6 Macropad. All rights reserved.
 
 # main/ bileseni - ana döngü (Bölüm 2) ve global baslangic state'i.

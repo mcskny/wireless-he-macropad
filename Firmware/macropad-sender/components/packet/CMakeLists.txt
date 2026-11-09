@@ -1,4 +1,4 @@
-﻿# SPDX-License-Identifier: MIT-only
+﻿# SPDX-License-Identifier: GPL-3.0-only
 # Copyright (c) 2026 ESP32-C6 Macropad. All rights reserved.
 
 # Component: packet

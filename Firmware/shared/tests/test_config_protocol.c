@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 #include "config_protocol.h"
 #include <assert.h>
 #include <string.h>
