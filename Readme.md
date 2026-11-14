@@ -1,19 +1,48 @@
-> **Separate transport profiles (experimental):** C6 0.1.6 and Studio 0.1.4 keep BLE and ESP-NOW layer settings separately, copying prior shared settings on first migration. Separate key assignments across mode switches were verified on the current hardware. Hall calibration remains shared.
-
-> **6 November 2026:** Studio supports configuring C6 lighting, selecting layers and writing supported per-layer HID assignments over encrypted BLE. Hardware checks confirmed lighting changes on two layers and an H assignment that survived a C6 restart. Three paired-slot names are locally editable aliases, not automatically retrieved host names. BLE sensor telemetry and automatic synchronization between C6 and S3 are not implemented; a solid lighting color also persisted across a restart with Studio closed. Other hosts need further testing.
-
 # Wireless HE Macropad
 
-A wireless, 12-key Hall-effect macropad built around a custom PCB, an ESP32-C6 sender, an ESP32-S3 USB receiver, and a native macOS companion app.
+A wireless 12-key Hall-effect macropad with a custom PCB, its own firmware and a native macOS companion app. The main goal is **analog key sensing without the battery drain**: the analog Hall sensors are powered down while idle, and power is managed so the board can run wireless for a long time.
 
-The project explores analog key travel, configurable actuation, per-layer actions, responsive lighting, and power-conscious wireless operation. It is an **active hardware and firmware prototype**, not a finished commercial product.
+It is an **active hardware and firmware prototype**, not a finished commercial product.
 
 [![ESP-IDF](https://img.shields.io/badge/ESP--IDF-6.1-blue)](https://github.com/espressif/esp-idf)
 [![Platform](https://img.shields.io/badge/Studio-macOS-black)](#wireless-he-studio)
-[![Status](https://img.shields.io/badge/status-active%20prototype-orange)](#what-works-today)
+[![Status](https://img.shields.io/badge/status-active%20prototype-orange)](#v1--esp32-c6--esp32-s3-built)
 [![License](https://img.shields.io/badge/license-GPL--3.0-blue)](LICENSE)
 
-## At a glance
+<table>
+<tr>
+<td align="center"><img src="Docs/images/v1-assembled.jpg" width="420" alt="v1 macropad assembled with keycaps and RGB"><br><b>v1 assembled, on the test bench</b></td>
+<td align="center"><img src="Docs/images/v1-board-lit.jpg" width="420" alt="v1 bare PCB with all LEDs lit"><br><b>v1 PCB with all 12 LEDs working</b></td>
+</tr>
+</table>
+
+## The idea
+
+Analog Hall sensors (DRV5055 here) draw current all the time. On a wired board that does not matter; on a wireless one, 12 always-on sensors drain the battery even when nobody is typing. This project keeps the analog sensor rail switched off while idle and wakes it only when a key starts to move, then reads the real key depth for actuation, rapid trigger and analog features.
+
+## Versions at a glance
+
+| | **v1** (built) | **v2** (in development) |
+|---|---|---|
+| Keyboard MCU | ESP32-C6 (XIAO test board) | WCH CH585M |
+| USB dongle | ESP32-S3 | WCH CH585M |
+| Sensor chain | 12 × DRV5055 → CD74HC4067 mux → MCP3202 12-bit ADC | 12 × DRV5055 → MCU internal ADC directly (no mux, no external ADC) |
+| Scan rate | ~1 kHz active (≈983 scans/s observed) | Target 16 kHz scan |
+| Report rate | ~1 kHz target | Target 8 kHz, wired and wireless (fallback 4/2/1 kHz) |
+| Wired USB | Through the S3 dongle | USB 2.0 High-Speed |
+| Wireless | ESP-NOW to dongle + direct BLE HID | 2.4 GHz link to dongle + BLE |
+| Hall processing | On the dongle | On the keyboard (fixed-point); dongle is a pass-through |
+| Analog sensor power | MOSFET-switched rail, software duty cycling | Low-noise LDO with enable + digital Hall wake-up |
+| Live view in Studio | Telemetry over the same link | Separate low-rate telemetry stream, so it does not cost report rate |
+| Status | Built and tested on a bench (details below) | PCB routed, not yet manufactured; core firmware libraries written and host-tested |
+
+v2 numbers are **design targets**, not measurements. v2 hardware files will be published after the first boards are tested.
+
+---
+
+## v1 — ESP32-C6 + ESP32-S3 (built)
+
+### At a glance
 
 - **12 analog Hall-effect keys**, arranged in three columns and four rows.
 - A separate mechanical **layer button**, four layer indicator positions, and a rotary encoder in the design.
@@ -23,7 +52,7 @@ The project explores analog key travel, configurable actuation, per-layer action
 - Per-key lighting driven by a chain of 12 addressable LEDs.
 - **Wireless HE Studio**, a native macOS app with live telemetry, calibration, interactive 2D/3D views, layers, and lighting controls.
 
-## Gallery
+### Gallery
 
 <table>
 <tr>
@@ -38,7 +67,7 @@ The project explores analog key travel, configurable actuation, per-layer action
 
 The enclosure and PCB images are renders; Studio screenshots illustrate the interface and may not show its latest revision.
 
-## How it works
+### How it works
 
 Each key moves a magnet past a Hall sensor. The sensor's analog output is sampled and converted into a calibrated position, allowing the prototype to react to key travel rather than just an on/off switch.
 
@@ -55,7 +84,7 @@ Mac / computer ← USB HID + serial telemetry ← ESP32-S3 dongle
 
 The repository contains both the **current C6/S3 test bridge** and separate, evolving product-firmware projects. They are not interchangeable builds and do not necessarily use the same pin assignments.
 
-## What works today
+### What works today
 
 The following describes the test setup and the specific behavior observed, as of **5 November 2026**. A successful test of one action does not mean every combination has been validated.
 
@@ -75,7 +104,7 @@ The following describes the test setup and the specific behavior observed, as of
 
 The percentage in the graphic is a **manually reviewed, equally weighted checklist estimate**. Some items overlap; it is not a measurement of remaining work, reliability, or product readiness. See the [compact progress grid](Docs/progress/project-progress-grid-en.png) for the item index.
 
-## Wireless HE Studio
+### Wireless HE Studio
 
 Studio is a native **SwiftUI / AppKit / SceneKit** macOS application. Its current features include:
 
@@ -90,7 +119,7 @@ Studio includes 13 starter profiles covering creative applications and games. Th
 
 Studio writes supported actions for the **selected layer** to the S3. Calibration endpoints and supported Hall settings are included; local profile storage and device storage are distinct. Verify the target layer and assigned shortcuts before writing.
 
-## Sampling and power experiments
+### Sampling and power experiments
 
 The current test policy scans at **100 Hz while idle**, with a **1 kHz active target** after detected movement. Idle radio updates are targeted at 10 Hz without Studio or 100 Hz while Studio is connected; active transmission targets 1 kHz. The observed values in Studio are measurements, not guarantees of those targets.
 
@@ -98,7 +127,7 @@ In one active test the C6 reported roughly **983 scans/s** and **858 radio submi
 
 With the experimental MOSFET build, the idle test showed approximately **13% commanded gate on-time**. Active-mode duty cycling with a 600 µs startup wait reduced a trial to about **620 scans/s**, so that experiment was reverted: the current active mode keeps the analog rail commanded on. GPIO timing does **not** establish the actual rail voltage, energy savings, or battery life. No power-saving multiplier is claimed.
 
-## Hardware overview
+### Hardware overview
 
 | Component | Role |
 |---|---|
@@ -113,7 +142,7 @@ With the experimental MOSFET build, the idle test showed approximately **13% com
 
 The **test-bridge** C6 wiring uses D0–D3 for multiplexer selection, D4 for ADC chip select, D8–D10 for SPI, D6/GPIO16 for LED data, D5/GPIO23 for the optional active-low analog power gate, and D7/GPIO17 for the layer button. Check the [bridge documentation](examples/c6_s3_sensor_bridge/README.md), the actual board, and the schematic before connecting or powering anything. These pins are **not** a promise about the separate product firmware.
 
-## Repository layout
+### Repository layout
 
 | Path | Contents |
 |---|---|
@@ -130,7 +159,7 @@ The **test-bridge** C6 wiring uses D0–D3 for multiplexer selection, D4 for ADC
 
 The earlier Assetto Corsa steering/throttle/brake experiment used a **wired sensor platform and a CrossOver virtual-controller bridge**. It does not demonstrate native analog gamepad output from the current S3 dongle.
 
-## Build and test
+### Build and test
 
 The prototype firmware has been built with the project's **ESP-IDF 6.1** environment. The following examples build only; select the correct board, port, wiring, and configuration before flashing.
 
@@ -151,7 +180,7 @@ The **experimental MOSFET build** uses a separate power configuration and requir
 
 For the macOS app, see the [Studio README](examples/macropad_12_idf/mac_app/README.md). The current local build script targets macOS 26 and expects a configured ESP-IDF Python environment; it is not yet a signed, notarized general distribution.
 
-## Known limitations
+### Known limitations
 
 - ESP-NOW uses broadcast frames without authenticated encryption; CRC and source MAC checks do not authenticate senders. BLE encrypts links with bonded Just Works pairing, which does not provide MITM authentication.
 - The S3 reports up to six ordinary keyboard keys at once; native analog gamepad output and physical encoder HID are unfinished.
@@ -159,9 +188,41 @@ For the macOS app, see the [Studio README](examples/macropad_12_idf/mac_app/READ
 - The MOSFET status in Studio reports software commands. Actual sensor-rail behavior and power consumption still need electrical measurement.
 - Hardware, firmware, app, and documentation are evolving; verify the specific test configuration before relying on a feature.
 
-## Versioning and releases
+### Versioning and releases
 
 C6 firmware, S3 firmware, and Studio use separate version numbers and GitHub releases. See [release notes](releases/CHANGELOG.md), [versions](releases/versions.json). Published tags are immutable. Initial releases are pre-releases; the Studio source currently has machine-specific runtime paths, so a portable binary is not claimed.
+
+---
+
+## v2 — CH585M (in development)
+
+v2 moves both the keyboard and the dongle to the **WCH CH585M** (RISC-V, USB 2.0 High-Speed, BLE 5.4 and a 2.4 GHz proprietary radio) to reach high polling rates both wired and wireless, and reworks the power design around the analog sensors.
+
+**What changes**
+
+- **Simpler sensor path:** the 12 analog sensors go straight into the MCU's ADC. Removing the multiplexer and the external ADC is what makes a 16 kHz scan target realistic.
+- **Hall engine on the keyboard:** calibration, actuation, rapid trigger and SOCD run on the keyboard in fixed-point (the CH585 has no FPU). The dongle only forwards reports.
+- **Quieter, switchable analog supply:** a dedicated low-noise LDO feeds the sensors and is switched on only when needed; digital Hall sensors handle wake-up from idle.
+- **Separate telemetry:** Studio's live key-depth view uses its own slow stream (sequence number, key bitmap and a rotating slot), so it does not eat into the 8 kHz report budget.
+- **Power path:** BQ25300 charger, 18650 cell, low-Iq 3.3 V regulator, and battery/VBUS/charge-status sensing on the MCU.
+
+**Status**
+
+| Area | State |
+|---|---|
+| Schematic | Done |
+| PCB | 4-layer layout routed, DRC clean, not yet ordered |
+| Firmware | Fixed-point Hall core and the radio/USB packet format written, with host-side tests; drivers for the CH585 not started |
+| Enclosure | Parametric 3D-printable case and an aluminium plate drawn, first prints pending |
+| Measurements | Planned: always-on vs. duty-cycled vs. digital wake-up current, scan rate, end-to-end latency |
+
+---
+
+## Recent v1 notes
+
+> **Separate transport profiles (experimental):** C6 0.1.6 and Studio 0.1.4 keep BLE and ESP-NOW layer settings separately, copying prior shared settings on first migration. Separate key assignments across mode switches were verified on the current hardware. Hall calibration remains shared.
+
+> **6 November 2026:** Studio supports configuring C6 lighting, selecting layers and writing supported per-layer HID assignments over encrypted BLE. Hardware checks confirmed lighting changes on two layers and an H assignment that survived a C6 restart. Three paired-slot names are locally editable aliases, not automatically retrieved host names. BLE sensor telemetry and automatic synchronization between C6 and S3 are not implemented; a solid lighting color also persisted across a restart with Studio closed. Other hosts need further testing.
 
 ## License
 
