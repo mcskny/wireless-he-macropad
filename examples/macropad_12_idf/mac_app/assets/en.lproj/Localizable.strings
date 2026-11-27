@@ -574,3 +574,10 @@
 "Encoder görevleri BLE üzerinden kullanılamıyor." = "Encoder actions are unavailable over BLE.";
 
 "Gelişmiş özellikler" = "Advanced features";
+
+"Hareketsizlikte ışıkları kapat" = "Turn off lights when inactive";
+"Asla" = "Never";
+"1 dakika" = "1 minute";
+"5 dakika" = "5 minutes";
+"10 dakika" = "10 minutes";
+"30 dakika" = "30 minutes";

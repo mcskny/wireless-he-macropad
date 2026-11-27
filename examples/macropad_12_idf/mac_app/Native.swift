@@ -31,6 +31,7 @@ struct LayerConfig: Codable, Equatable { var encoderHold:EncoderHold? = nil; var
 struct HallConfig: Codable, Equatable { var mode="Geleneksel"; var point=50.0; var hysteresis=5.0; var press=5.0; var release=5.0; var min=5.0; var max=95.0 }
 struct Cal: Codable, Equatable { var free:Int?; var pressed:Int? }
 struct Config: Codable, Equatable {
+    var lightingIdleCode:Int? = nil
     var testChannelMap:[Int]? = nil
     var layers=(0..<4).map { LayerConfig(name:"Layer \($0+1)") }; var hall=Array(repeating:HallConfig(),count:12)
     var mode="Hibrit"; var idle=15.0; var brightness=60.0; var socd=false; var socdA=0; var socdB=1
@@ -293,7 +294,7 @@ final class StudioModel: ObservableObject {
     @Published var config:Config { didSet {
         if let d=try? JSONEncoder().encode(config) { UserDefaults.standard.set(d,forKey:"native-config-v1") }
         if let d=try? JSONEncoder().encode(config.layers) { UserDefaults.standard.set(d,forKey:"native-layers-"+layerBank) }
-        if config.brightness != oldValue.brightness {
+        if config.brightness != oldValue.brightness || config.lightingIdleCode != oldValue.lightingIdleCode {
             DispatchQueue.main.asyncAfter(deadline:.now()+1.05) { [weak self] in self?.syncLighting() }
         }
     } }
@@ -423,7 +424,8 @@ final class StudioModel: ObservableObject {
         for entry in config.layers {
             let light=entry.light
             guard let effect=effects[light.baseEffect],light.color.count==7,light.color.first=="#",let rgb=Int(light.color.dropFirst(),radix:16) else{return}
-            let flags=(light.colorful ? 1:0)+((light.baseEffect == "Kayan ışık" && light.colorful && light.sweepColorStyle == "tur") ? 4:0)
+            let idleCode=config.lightingIdleCode.flatMap{(0...4).contains($0) ? $0 : nil} ?? 0
+            let flags=(light.colorful ? 1:0)+((light.baseEffect == "Kayan ışık" && light.colorful && light.sweepColorStyle == "tur") ? 4:0)+(idleCode << 3)
             profiles.append([effect,(rgb>>16)&255,(rgb>>8)&255,rgb&255,Int(max(0,min(100,min(config.brightness,light.brightness))).rounded()),Int(max(1,min(100,light.speed)).rounded()),flags])
         }
         if bleControlReady && !freshSensor {
@@ -996,7 +998,7 @@ struct KeyPad:View {
         }
         if light.effectiveEffect == "Basılan yerden dalga" {animation=model.waveLight(index,at:time,sensitive:false)}
         if light.effectiveEffect == "Derinliğe duyarlı" || light.effectiveEffect == "Derinliğe duyarlı dalga" {animation=model.pressureLight(index,at:time)}
-        let brightness=min(1,max(0,model.effectiveLightBrightness/100))*animation
+        let brightness=animation
         if light.colorful && light.baseEffect == "Yılan" {return Color(nsColor:model.snakeColor(at:time,duration:duration)).opacity(brightness)}
         if light.colorful && light.baseEffect == "Starlight" {return Color(nsColor:model.starlightColor(index,at:time,duration:duration)).opacity(brightness)}
         if light.colorful && light.baseEffect == "Kayan ışık" {return Color(nsColor:model.sweepColor(index,at:time,duration:duration)).opacity(brightness)}
@@ -1047,18 +1049,18 @@ struct KeyPad:View {
 struct FeaturesView:View {
     @ObservedObject var model:StudioModel
     @State private var stage=0
-    private let titles=["Birleştirilmiş","Tuş kapakları","Switchler ve üst kapak","Plate ve PCB"]
-    private let descriptions=["Macropad’in tamamlanmış görünümü.","Tuş kapakları kaldırıldı; altlarındaki switchler görünüyor.","Switchler ve üst kapak kaldırıldı; altlarındaki plate görünüyor.","Plate de kaldırıldı; PCB ve bileşenlerini inceleyebilirsin."]
+    private let titles=["Birleştirilmiş","Tuş kapakları","Switchler ve üst kapak","Plate ve PCB","PCB ve alt kapak"]
+    private let descriptions=["Macropad’in tamamlanmış görünümü.","Tuş kapakları kaldırıldı; altlarındaki switchler görünüyor.","Switchler ve üst kapak kaldırıldı; altlarındaki plate görünüyor.","Plate de kaldırıldı; PCB ve bileşenlerini inceleyebilirsin.","PCB de kaldırıldı; alt kapaktaki köpük ve pil görünüyor."]
     var body:some View {
         VStack(alignment:.leading,spacing:16) {
             GlassCard {VStack(alignment:.leading,spacing:14) {
-                HStack {SectionTitle(title:"İç yapıyı keşfet",subtitle:"Blender modelindeki parçalar · sürükleyerek döndür");Spacer();Text("\(stage+1) / 4").font(.caption.monospacedDigit()).foregroundStyle(.secondary)}
+                HStack {SectionTitle(title:"İç yapıyı keşfet",subtitle:"Blender modelindeki parçalar · sürükleyerek döndür");Spacer();Text("\(stage+1) / \(titles.count)").font(.caption.monospacedDigit()).foregroundStyle(.secondary)}
                 MacropadModelView(model:model,clock:model.lightingClock,explodedStage:stage).frame(height:490).clipShape(RoundedRectangle(cornerRadius:16))
                 HStack {
                     VStack(alignment:.leading,spacing:4){Text(LocalizedStringKey(titles[stage])).font(.headline);Text(LocalizedStringKey(descriptions[stage])).font(.caption).foregroundStyle(.secondary)}
                     Spacer()
                     if stage > 0 {Button("Geri"){stage-=1}}
-                    Button(LocalizedStringKey(stage == 3 ? "Başa dön" : "Parçaları kaldır")){stage = stage == 3 ? 0 : stage+1}.buttonStyle(.borderedProminent)
+                    Button(LocalizedStringKey(stage == titles.count-1 ? "Başa dön" : "Parçaları kaldır")){stage = stage == titles.count-1 ? 0 : stage+1}.buttonStyle(.borderedProminent)
                 }
             }}
         }
@@ -1819,6 +1821,7 @@ struct LightView:View {
                 VStack(alignment:.leading,spacing:18) {
                     SectionTitle(title:"Aydınlatma stüdyosu",subtitle:"Katman ayarları cihaza canlı gönderilir")
                     if let device=model.deviceLayer {Text(verbatim:UserDefaults.standard.string(forKey:"studio-language") == "en" ? "Device: Layer \(device.layer+1) · Editing: Layer \(model.layer+1)" : "Cihaz: Layer \(device.layer+1) · Düzenlenen: Layer \(model.layer+1)").font(.caption).foregroundStyle(device.layer == model.layer ? Color.secondary : Color.orange)}
+                    Picker("Hareketsizlikte ışıkları kapat",selection:Binding(get:{model.config.lightingIdleCode ?? 0},set:{model.config.lightingIdleCode=$0})){Text("Asla").tag(0);Text("1 dakika").tag(1);Text("5 dakika").tag(2);Text("10 dakika").tag(3);Text("30 dakika").tag(4)}
                     Picker("Katman",selection:$model.layer){ForEach(0..<4){Text("Layer \($0+1)").tag($0)}}.labelsHidden().pickerStyle(.segmented)
                     Picker("Efekt",selection:effectBinding){ForEach(["Kapalı","Sabit","Nefes","Dalga","Gökkuşağı","Kayan ışık","Starlight","Yılan","Tepkisel","Basılan yerden dalga"],id:\.self){Text(LocalizedStringKey($0)).tag($0)}}
                     if ["Kayan ışık","Basılan yerden dalga","Tepkisel","Nefes","Dalga","Yılan"].contains(model.config.layers[model.layer].light.baseEffect) {
@@ -1890,7 +1893,7 @@ struct PowerView:View {
                 HStack(alignment:.top,spacing:12){Image(systemName:"bolt.circle.fill").font(.title2).foregroundStyle(accent);VStack(alignment:.leading,spacing:5){Text(verbatim:studioDisplay(model.config.mode)+" "+studioDisplay("mod")).font(.headline);Text(LocalizedStringKey(modeDescription)).font(.caption).foregroundStyle(.secondary)}}.padding(16).frame(maxWidth:.infinity,alignment:.leading).background(accent.opacity(0.07),in:RoundedRectangle(cornerRadius:14))
                 RangeControl(label:"Hibrit hareketsizlik süresi",value:$model.config.idle,bounds:1...240,unit:" dk").disabled(model.usingBLE).opacity(model.usingBLE ? 0.45 : 1)
                 RangeControl(label:"Temel parlaklık",value:$model.config.brightness)
-                Text("Katman parlaklığı için üst sınırdır; 2B ve 3B önizlemede uygulanır.").font(.caption).foregroundStyle(.secondary)
+                Text("Katman parlaklığı için üst sınırdır; fiziksel ışıklara uygulanır. Önizleme parlaklıktan etkilenmez.").font(.caption).foregroundStyle(.secondary)
                 Text("Seçimler yerel taslak olarak saklanır. Pil seviyesi ve güç tüketimi ölçülmüyor.").font(.caption).foregroundStyle(.secondary)
             }}
             GlassCard {VStack(alignment:.leading,spacing:16) {

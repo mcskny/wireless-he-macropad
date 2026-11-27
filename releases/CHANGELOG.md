@@ -5,6 +5,14 @@ Versions are independent. Tags are `c6/vX.Y.Z`, `s3/vX.Y.Z`, and
 prototype; source commits preserve changes between releases. A version is never
 reused or overwritten after publication.
 
+## Studio 0.2.0 — 2026-11-27 (experimental pre-release)
+
+- New 3D model: v2 enclosure and board, translucent switches with moving stems, five-step exploded view.
+- Layer key and encoder knob react visually when pressed.
+- Optional idle turn-off for lighting (never / 1 / 5 / 10 / 30 min); needs supporting firmware.
+- 2D/3D previews no longer dim with the hardware brightness slider.
+- macOS DMG (arm64) attached to the release.
+
 ## Studio 0.1.8 — 2026-11-06 (experimental pre-release)
 
 - Track S3 writes independently of BLE connection state and report a timeout instead of remaining indefinitely in progress.

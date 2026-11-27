@@ -294,7 +294,7 @@ class Handler(BaseHTTPRequestHandler):
             for row in payload:
                 if not isinstance(row,list) or len(row)!=7 or any(type(x) is not int or x<0 or x>255 for x in row):raise ValueError('row')
                 effect,r,g,b,brightness,speed,flags=row
-                if effect>9 or brightness>100 or speed<1 or speed>100 or flags & ~5 or (flags & 4 and effect!=5):raise ValueError('value')
+                if effect>9 or brightness>100 or speed<1 or speed>100 or flags & ~0x3d or ((flags >> 3) & 7)>4 or (flags & 4 and effect!=5):raise ValueError('value')
             with condition:lighting_profiles=bytes(v for row in payload for v in row)
         except (ValueError,TypeError,json.JSONDecodeError):
             self.send_error(400);return

@@ -1,18 +1,18 @@
-> **Studio 0.1.1:** Canlı test ve aydınlatmadaki 2B/3B modeller bağlantı durumunu gösterir. BLE klavye varlığı Mac'in HID aygıtları üzerinden algılanır; bu, sensör telemetrisi veya ayar yazma anlamına gelmez. BLE üzerinden canlı sensör, profil ve aydınlatma yapılandırması henüz uygulanmadı.
+> **Güncel durum — 7 Kasım 2026:** Studio BLE üzerinden desteklenen layer görevlerini ve aydınlatmayı C6'ya aktarabilir. Canlı sensör/grafik BLE'de kullanılmaz, S3 yolu içindir. BLE ve ESP-NOW layer taslakları ayrıdır. Aydınlatma hareketsizlik süresi Asla/1/5/10/30 dk seçilebilir; 1 dk sonunda sönme ve fiziksel tuşla uyanma bir modda denendi. Aşağıdaki eski sürüm açıklamaları tarihsel olup güncel durumu tek başına anlatmaz.
 
-> **Güncel durum — 5 Kasım 2026:** Bu dosyanın aşağıdaki tarihli test notları kendi dönemine aittir. Projenin güncel C6/S3, BLE, HID ve doğrulama durumu için [ana README’ye](../../../Readme.md) bakın.
+> **Güncel durum — 5 Kasım 2026:** Bu dosyanın aşağıdaki tarihli test notları kendi dönemine aittir. Projenin güncel C6/S3, BLE, HID ve doğrulama durumu için [ana README](../../../Readme.md) bakın.
 
 # Wireless HE Studio — macOS test uygulaması
 
 > **Güncel not — 2 Kasım 2026:** Aşağıdaki eski bölümlerde bazı özellikler yalnızca taslak olarak anlatılabilir. Belgenin sonundaki Mac klavye çıktısı ve sensör kalibrasyonu bölümleri bu eski açıklamaları günceller. Projenin tüm bileşenleri ve doğrulama durumu için [ana README](../../../Readme.md) de kullanılabilir.
 
-> **Durum: yerel test ve tasarım uygulaması.** Bu belge, mevcut macOS uygulamasının ne yaptığını, neleri henüz yapmadığını ve uygulama üzerinde çalışacak bir geliştirici veya yapay zekânın dikkat etmesi gerekenleri açıklar. Kod her zaman güncel davranış için asıl kaynaktır. Son gözden geçirme: **31 Ekim 2026**.
+> **Durum: yerel prototip uygulaması.** Alt bölümlerdeki 31 Ekim açıklamaları tarihsel olabilir. Güncel davranış için üstteki not, kaynak kodu ve [ana README](../../../Readme.md) birlikte okuyun.
 
 ## Amaç ve kapsam
 
 Wireless HE Studio, 12 Hall sensörlü bir macropad için yerel macOS arayüzüdür. Geliştirme sırasında klasik ESP32 DevKit, MCP3202 ADC ve CD74HC4067 çoklayıcıdan gelen 12 analog kanalı USB/seri bağlantı üzerinden görüntülemek için kullanılır. Uygulama ayrıca gerçek macropadın modelini, tuş hareketini, katman, oyun ve aydınlatma ayarlarını **yerel önizleme veya taslak** olarak gösterir.
 
-Ürün için düşünülen C6 gönderici ve S3 alıcı bu test akışının parçası değildir. Uygulamada bunlara bağlanan veya ayar gönderen bir uygulama iletişimi yoktur. Kablosuz test şu an kapsam dışıdır. Donanım bağlı olmadığında canlı sensör davranışı, kablo bağlantıları ve uçtan uca veri akışı doğrulanmış kabul edilmemelidir.
+Bu ilk DevKit açıklaması tarihsel kapsamdır. Güncel test akışında C6, ESP-NOW ile S3'e; S3 de USB üzerinden Mac'e bağlanır. C6 ayrıca BLE ile desteklenen ayar ve HID işlevlerini sağlar. Donanım bağlı değilken gerçek zamanlı davranış doğrulanmış kabul edilmemelidir.
 
 **En önemli kural:** Arayüzde bir seçeneğin bulunması, onun donanımda, firmware'de veya oyunda uygulandığı anlamına gelmez. Aşağıdaki bölümlerde canlı veri ve taslak özellikler ayrı belirtilmiştir.
 

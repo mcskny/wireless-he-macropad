@@ -7,7 +7,7 @@ final class MacropadSceneView: SCNView {
     var onLayer: (()->Void)?
     var keyInteractionEnabled=true
     var cameraNode:SCNNode?
-    private let focus=SCNVector3(0.008,0,0.004)
+    private let focus=SCNVector3(0.012,0.002,0.004) // v2 kasa merkezi
     private var downPoint = NSPoint.zero
     private var lastPoint = NSPoint.zero
     private var moved = false
@@ -28,17 +28,40 @@ final class MacropadSceneView: SCNView {
         lastPoint=p;updateCamera()
     }
     override func scrollWheel(with event:NSEvent){distance=min(0.48,max(0.14,distance*exp(-Double(event.scrollingDeltaY)*0.008)));updateCamera()}
+    /// Katman tuşu kapağının rengi: t = 0 normal gri (0,45), t = 1 tam basılı (0,86, hafif beyaz).
+    static func tintLayer(_ node:SCNNode,_ t:CGFloat){
+        let v=0.45+(0.86-0.45)*min(max(t,0),1)
+        node.enumerateHierarchy{c,_ in c.geometry?.materials.forEach{$0.diffuse.contents=NSColor(calibratedWhite:v,alpha:1)}}
+    }
+    /// Enkoder düğmesi: t = 0 metalik siyah (0,08), t = 1 basılı (0,42).
+    static func tintKnob(_ node:SCNNode,_ t:CGFloat){
+        let v=0.08+(0.42-0.08)*min(max(t,0),1)
+        node.enumerateHierarchy{c,_ in c.geometry?.materials.forEach{$0.diffuse.contents=NSColor(calibratedWhite:v,alpha:1)}}
+    }
     override func mouseUp(with event:NSEvent){
         guard !moved, keyInteractionEnabled else{return}
         let point=convert(event.locationInWindow,from:nil)
         for hit in hitTest(point,options:[.boundingBoxOnly:false,.searchMode:SCNHitTestSearchMode.closest.rawValue]) {
             var node:SCNNode?=hit.node
             while let n=node {
+                if n.name == "Cylinder" {   // enkoder düğmesi: hafif iner ve açık renge döner
+                    if n.action(forKey:"knobPress") == nil {
+                        let down=SCNAction.moveBy(x:0,y:0,z:-0.0015,duration:0.07),up=SCNAction.moveBy(x:0,y:0,z:0.0015,duration:0.11)
+                        let td=SCNAction.customAction(duration:0.07){node,t in MacropadSceneView.tintKnob(node,t/0.07)}
+                        let tu=SCNAction.customAction(duration:0.11){node,t in MacropadSceneView.tintKnob(node,1-t/0.11)}
+                        n.runAction(.sequence([.group([down,td]),.group([up,tu])]),forKey:"knobPress")
+                    }
+                    return
+                }
                 if n.name == "Node1_001" {
                     if n.action(forKey:"layerPress") == nil {
                         let down=SCNAction.moveBy(x:0,y:0,z:-0.002,duration:0.07)
                         let up=SCNAction.moveBy(x:0,y:0,z:0.002,duration:0.11)
-                        n.runAction(.sequence([down,up]),forKey:"layerPress")
+                        // basılırken hafif beyazlaşır, bırakınca eski rengine döner
+                        let tintDown=SCNAction.customAction(duration:0.07){node,t in MacropadSceneView.tintLayer(node,t/0.07)}
+                        let tintUp=SCNAction.customAction(duration:0.11){node,t in MacropadSceneView.tintLayer(node,1-t/0.11)}
+                        n.runAction(.sequence([.group([down,tintDown]),.group([up,tintUp])]),forKey:"layerPress")
+                        self.scene?.rootNode.childNode(withName:"LayerStem",recursively:true)?.runAction(.sequence([down,up]),forKey:"layerPress")
                     }
                     onLayer?();return
                 }
@@ -56,16 +79,19 @@ struct MacropadModelView:NSViewRepresentable {
     final class Coordinator {
         var keys:[Int:SCNNode]=[:]
         var positions:[Int:SCNVector3]=[:]
+        var stems:[Int:SCNNode]=[:]; var stemPositions:[Int:SCNVector3]=[:] // HallStem_XX: switch sapı, basışta kapakla iner
         var materials:[Int:[SCNMaterial]]=[:]
         var highlightedKeys:Set<Int> = []
         var depths:[Int:CGFloat] = [:]
         var leds:[SCNNode] = []
         var layerLEDs:[SCNNode] = []
-        var layerKey:SCNNode?;var layerKeyOrigin:SCNVector3?;var hardwareLayerPressed=false
+        var layerKey:SCNNode?;var layerKeyOrigin:SCNVector3?;var layerStem:SCNNode?;var layerStemOrigin:SCNVector3?;var hardwareLayerPressed=false
         var shownLayer = -1
         var explodedStage = -1
         var explodedParts:[(SCNNode,SCNVector3)] = []
         var explodedPlate:(SCNNode,SCNVector3)?
+        var explodedFoam:(SCNNode,SCNVector3)? // plaka–PCB köpüğü
+        var explodedBoard:[(SCNNode,SCNVector3)] = [] // 5. aşama: PCB (J2 dahil) ve katman switch'i kalkar
         var lightingSignature = ""
         var lastLightHit = 0
         var timerSubscription:AnyCancellable?
@@ -100,6 +126,7 @@ struct MacropadModelView:NSViewRepresentable {
                     if original.name == "Material_002" {
                         material.diffuse.contents=NSColor(calibratedRed:0.62,green:0.018,blue:0.035,alpha:1)
                         material.roughness.contents=0.28
+                        material.transparency=0.72;material.transparencyMode = .dualLayer;material.writesToDepthBuffer=false // yarı saydam gövde
                     } else if original.name == "Material_001" {
                         material.diffuse.contents=NSColor(calibratedWhite:0.035,alpha:1)
                         material.roughness.contents=0.55
@@ -115,8 +142,11 @@ struct MacropadModelView:NSViewRepresentable {
                 geometry.materials=geometry.materials.map { original in
                     let material=(original.copy() as? SCNMaterial) ?? original
                     if ["mat_10","Gray_Plastic__Plastic_"].contains(original.name ?? "") {
-                        material.diffuse.contents=NSColor(calibratedWhite:0.045,alpha:1)
-                        material.roughness.contents=0.6
+                        material.diffuse.contents=NSColor(calibratedWhite:0.92,alpha:1) // beyaz gövde
+                        material.roughness.contents=0.5
+                    } else if (original.name ?? "").hasPrefix("Material_006") {
+                        material.diffuse.contents=NSColor(calibratedRed:0.36,green:0.19,blue:0.09,alpha:1) // kahverengi sap
+                        material.roughness.contents=0.5
                     }
                     return material
                 }
@@ -163,8 +193,10 @@ struct MacropadModelView:NSViewRepresentable {
                 node.geometry=geometry
             }
         }
-        if let root=scene.rootNode.childNode(withName:"root",recursively:false),
-           let plate=root.childNodes.first(where:{$0.name == "Cube_002"}) {
+        // v2 modeli: Switch_Plate / Case_Top / Case_Bottom; v1 adları yedek olarak kalır.
+        let v1Root=scene.rootNode.childNode(withName:"root",recursively:false)
+        let plateNode=scene.rootNode.childNode(withName:"Switch_Plate",recursively:true) ?? v1Root?.childNodes.first(where:{$0.name == "Cube_002"})
+        if let plate=plateNode {
             plate.enumerateChildNodes { node,_ in
                 guard let geometry=node.geometry?.copy() as? SCNGeometry else{return}
                 geometry.materials=geometry.materials.map { original in
@@ -176,7 +208,7 @@ struct MacropadModelView:NSViewRepresentable {
                 node.geometry=geometry
             }
         }
-        for name in ["Plane_001", "Plane_002"] {
+        for name in ["Case_Top", "Case_Bottom", "Plane_001", "Plane_002"] {
             if let part=scene.rootNode.childNode(withName:name,recursively:true) {
                 part.enumerateChildNodes { child,_ in
                     child.geometry?.materials.forEach { $0.diffuse.contents=NSColor(calibratedWhite:0.075,alpha:1);$0.roughness.contents=0.68;$0.metalness.contents=0.0 }
@@ -187,12 +219,13 @@ struct MacropadModelView:NSViewRepresentable {
         scene.rootNode.enumerateChildNodes {node,_ in
             guard let name=node.name,name.hasPrefix("HE_KEY_"),let i=Int(name.dropFirst(7)),(0..<12).contains(i) else{return}
             coord.keys[i]=node;coord.positions[i]=node.position
+            if let stem=scene.rootNode.childNode(withName:String(format:"HallStem_%02d",i),recursively:true) {coord.stems[i]=stem;coord.stemPositions[i]=stem.position}
             var list:[SCNMaterial]=[]
             func clone(_ n:SCNNode){if let geometry=n.geometry?.copy() as? SCNGeometry {geometry.materials=geometry.materials.map{($0.copy() as? SCNMaterial) ?? $0};n.geometry=geometry;list.append(contentsOf:geometry.materials)};n.childNodes.forEach{clone($0)}}
             clone(node);list.forEach{$0.diffuse.contents=NSColor(calibratedWhite:0.80,alpha:1);$0.roughness.contents=0.62;$0.metalness.contents=0.0};coord.materials[i]=list
         }
         if let knob=scene.rootNode.childNode(withName:"Cylinder",recursively:true) {
-            knob.enumerateChildNodes { child,_ in child.geometry?.materials.forEach { $0.diffuse.contents=NSColor(calibratedWhite:0.48,alpha:1);$0.metalness.contents=0.7;$0.roughness.contents=0.38 } }
+            knob.enumerateChildNodes { child,_ in child.geometry?.materials.forEach { $0.diffuse.contents=NSColor(calibratedWhite:0.08,alpha:1);$0.metalness.contents=0.85;$0.roughness.contents=0.42 /* metalik siyah */ } }
         }
         // A flat approximate illuminated surface sits below each keycap.
         let minX=coord.positions.values.map(\.x).min() ?? 0, maxX=coord.positions.values.map(\.x).max() ?? 0
@@ -200,10 +233,11 @@ struct MacropadModelView:NSViewRepresentable {
         for i in 0..<12 {
             guard let p=coord.positions[i] else {continue}
             let group=SCNNode();group.position=SCNVector3(p.x,p.y,0.01430)
-            // Match the Blender key pitch so adjacent surfaces meet edge-to-edge.
-            let left:Float = abs(p.x-minX)<0.001 ? 0.002 : 0, right:Float = abs(p.x-maxX)<0.001 ? 0.002 : 0
-            let bottom:Float = abs(p.y-minY)<0.001 ? 0.002 : 0, top:Float = abs(p.y-maxY)<0.001 ? 0.002 : 0
-            let panel=SCNPlane(width:CGFloat(0.01935+left+right),height:CGFloat(0.019162+bottom+top))
+            // v2: 19,1 mm tuş aralığı; dış sıra pencere duvarına kadar 0,4 mm uzar.
+            let pad:Float=0.0004
+            let left:Float = abs(p.x-minX)<0.001 ? pad : 0, right:Float = abs(p.x-maxX)<0.001 ? pad : 0
+            let bottom:Float = abs(p.y-minY)<0.001 ? pad : 0, top:Float = abs(p.y-maxY)<0.001 ? pad : 0
+            let panel=SCNPlane(width:CGFloat(0.0191+left+right),height:CGFloat(0.0191+bottom+top))
             panel.cornerRadius=0
             let mat=SCNMaterial();mat.lightingModel = .constant;mat.isDoubleSided=false
             panel.materials=[mat]
@@ -214,7 +248,19 @@ struct MacropadModelView:NSViewRepresentable {
         // The exported model combines all four indicators in one mesh and
         // hard-codes the first one white. Replace that mesh at its measured
         // positions, keeping the original indicator dimensions and spacing.
-        if let original=scene.rootNode.childNode(withName:"Cube_017",recursively:true), original.parent?.name == "Cube_003" {
+        // v2 modeli katman LED yarıklarının üst-orta noktasını LAYER_LED_0..3 olarak taşır (3,6 × 1,0 mm).
+        let layerMarkers=(0..<4).compactMap { scene.rootNode.childNode(withName:"LAYER_LED_\($0)",recursively:true) }
+        if layerMarkers.count == 4 {
+            for marker in layerMarkers {
+                let slit=SCNPlane(width:0.0036,height:0.0010)
+                slit.cornerRadius=0.0003
+                let material=SCNMaterial();material.lightingModel = .constant;slit.materials=[material]
+                let node=SCNNode(geometry:slit)
+                let p=marker.worldPosition
+                node.position=SCNVector3(p.x,p.y,p.z+0.00005)
+                scene.rootNode.addChildNode(node);coord.layerLEDs.append(node)
+            }
+        } else if let original=scene.rootNode.childNode(withName:"Cube_017",recursively:true), original.parent?.name == "Cube_003" {
             original.isHidden=true
             for index in 0..<4 {
                 let marker=SCNPlane(width:0.00277,height:0.00132)
@@ -225,18 +271,25 @@ struct MacropadModelView:NSViewRepresentable {
                 scene.rootNode.addChildNode(node);coord.layerLEDs.append(node)
             }
         }
-        if let root=scene.rootNode.childNode(withName:"root",recursively:false) {
-            if let plate=root.childNodes.first(where:{$0.name == "Cube_002"}) {coord.explodedPlate=(plate,plate.position)}
+        if let plate=plateNode {coord.explodedPlate=(plate,plate.position)}
+        if let foam=scene.rootNode.childNode(withName:"Plate_Foam",recursively:true) {coord.explodedFoam=(foam,foam.position)}
+        for name in ["Node_0","SW2"] {if let n=scene.rootNode.childNode(withName:name,recursively:true) {coord.explodedBoard.append((n,n.position))}}
+        if scene.rootNode.childNode(withName:"Case_Top",recursively:true) != nil {
+            for name in ["Case_Top","Cylinder"]+(0..<4).map({"Layer_LED_Diffuser_\($0)"}) {
+                if let part=scene.rootNode.childNode(withName:name,recursively:true) {coord.explodedParts.append((part,part.position))}
+            }
+        } else if let root=v1Root {
             for name in ["Plane_002","Cylinder","Cube_003"] {
                 if let part=root.childNodes.first(where:{$0.name == name}) {coord.explodedParts.append((part,part.position))}
             }
         }
         if let switches=scene.rootNode.childNode(withName:"MX12",recursively:true) {coord.explodedParts.append((switches,switches.position))}
-        if let layerKey=scene.rootNode.childNode(withName:"Node1_001",recursively:true) {coord.layerKey=layerKey;coord.layerKeyOrigin=layerKey.position;coord.explodedParts.append((layerKey,layerKey.position))}
+        if let layerKey=scene.rootNode.childNode(withName:"Node1_001",recursively:true) {coord.layerKey=layerKey;coord.layerKeyOrigin=layerKey.position;MacropadSceneView.tintLayer(layerKey,0)} // patlatılmışta tuş kapaklarıyla birlikte kalkar
+        if let stem=scene.rootNode.childNode(withName:"LayerStem",recursively:true) {coord.layerStem=stem;coord.layerStemOrigin=stem.position}
         for node in coord.layerLEDs {coord.explodedParts.append((node,node.position))}
         let floor=SCNPlane(width:20,height:20);let floorMaterial=SCNMaterial();floorMaterial.lightingModel = .physicallyBased;floorMaterial.roughness.contents=0.9;floorMaterial.diffuse.contents=NSColor(calibratedRed:0.11,green:0.14,blue:0.14,alpha:1);floor.materials=[floorMaterial]
         let surface=SCNNode(geometry:floor);surface.position=SCNVector3(0.008,0,-0.008);scene.rootNode.addChildNode(surface)
-        let target=SCNNode();target.position=SCNVector3(0.008,0,0.004);scene.rootNode.addChildNode(target)
+        let target=SCNNode();target.position=SCNVector3(0.012,0.002,0.004);scene.rootNode.addChildNode(target)
         let camera=SCNNode();camera.camera=SCNCamera();camera.camera?.zNear=0.001;camera.camera?.zFar=30;camera.camera?.fieldOfView=30;camera.camera?.screenSpaceAmbientOcclusionIntensity=0.18;camera.camera?.screenSpaceAmbientOcclusionRadius=0.002;camera.camera?.screenSpaceAmbientOcclusionBias=0.0005;camera.position=SCNVector3(0.13,-0.17,0.17)
         let look=SCNLookAtConstraint(target:target);look.isGimbalLockEnabled=true;look.worldUp=SCNVector3(0,0,1);camera.constraints=[look];scene.rootNode.addChildNode(camera)
         let ambient=SCNNode();ambient.light=SCNLight();ambient.light?.type = .ambient;ambient.light?.intensity=400;ambient.light?.color=NSColor.white;scene.rootNode.addChildNode(ambient)
@@ -270,17 +323,26 @@ struct MacropadModelView:NSViewRepresentable {
         let stageChanged=coordinator.explodedStage != stage
         SCNTransaction.begin();SCNTransaction.animationDuration=stageChanged ? 0.55 : 0.04
         let hardwarePressed=model.deviceLayer?.pressed == true && stage == 0
-        if hardwarePressed != coordinator.hardwareLayerPressed,let key=coordinator.layerKey,let origin=coordinator.layerKeyOrigin {key.removeAction(forKey:"layerPress");key.position=SCNVector3(origin.x,origin.y,origin.z-(hardwarePressed ? 0.002 : 0));coordinator.hardwareLayerPressed=hardwarePressed}
+        if hardwarePressed != coordinator.hardwareLayerPressed,let key=coordinator.layerKey,let origin=coordinator.layerKeyOrigin {key.removeAction(forKey:"layerPress");key.position=SCNVector3(origin.x,origin.y,origin.z-(hardwarePressed ? 0.002 : 0));MacropadSceneView.tintLayer(key,hardwarePressed ? 1 : 0);if let stem=coordinator.layerStem,let so=coordinator.layerStemOrigin {stem.removeAction(forKey:"layerPress");stem.position=SCNVector3(so.x,so.y,so.z-(hardwarePressed ? 0.002 : 0))};coordinator.hardwareLayerPressed=hardwarePressed}
         if stageChanged {
-            for (part,origin) in coordinator.explodedParts {part.position=SCNVector3(origin.x,origin.y,origin.z+(stage >= 2 ? (stage == 3 ? 0.055 : 0.035) : 0))}
-            if let (plate,origin)=coordinator.explodedPlate {plate.position=SCNVector3(origin.x,origin.y,origin.z+(stage == 3 ? 0.020 : 0))}
+            func lift(_ v:[CGFloat])->CGFloat {v[min(max(stage,0),v.count-1)]} // aşama 0..4
+            for (part,origin) in coordinator.explodedParts {part.position=SCNVector3(origin.x,origin.y,origin.z+lift([0,0,0.035,0.055,0.080]))}
+            if let key=coordinator.layerKey,let origin=coordinator.layerKeyOrigin {key.removeAction(forKey:"layerPress");MacropadSceneView.tintLayer(key,0);key.position=SCNVector3(origin.x,origin.y,origin.z+lift([0,0.035,0.075,0.095,0.120]))}
+            if let (plate,origin)=coordinator.explodedPlate {plate.position=SCNVector3(origin.x,origin.y,origin.z+lift([0,0,0,0.020,0.048]))}
+            for (board,origin) in coordinator.explodedBoard {board.position=SCNVector3(origin.x,origin.y,origin.z+lift([0,0,0,0,0.028]))}
+            if let (foam,origin)=coordinator.explodedFoam {foam.position=SCNVector3(origin.x,origin.y,origin.z+lift([0,0,0,0.010,0.038]))}
             for led in coordinator.leds {led.isHidden = model.page == "Özellikler"}
             coordinator.depths.removeAll();coordinator.explodedStage=stage
         }
         let highlights:Set<Int> = ["Özellikler","Canlı test"].contains(model.page) ? [] : (model.page == "Aydınlatma" ? Set(coordinator.keys.keys.filter{model.lightingKeyHighlighted($0)}) : [model.selected])
         for (i,node) in coordinator.keys {
-            let amount=stage == 0 ? CGFloat(model.displayedPercent(i)/100)*0.0032 : (stage == 1 ? -0.035 : (stage == 2 ? -0.075 : -0.095))
-            if coordinator.depths[i] != amount, let origin=coordinator.positions[i] { node.position=SCNVector3(origin.x,origin.y,origin.z-amount);coordinator.depths[i]=amount }
+            let amount=stage == 0 ? CGFloat(model.displayedPercent(i)/100)*0.0032 : -[0,0.035,0.075,0.095,0.120][min(stage,4)]
+            if coordinator.depths[i] != amount, let origin=coordinator.positions[i] { node.position=SCNVector3(origin.x,origin.y,origin.z-amount);coordinator.depths[i]=amount
+                if let stem=coordinator.stems[i],let so=coordinator.stemPositions[i] {stem.position=SCNVector3(so.x,so.y,so.z-(stage == 0 ? amount : 0))}
+                // basılırken hafif yeşil, bırakınca eski rengi (0,80 gri)
+                let t=stage == 0 ? min(max(amount/0.0032,0),1) : 0
+                let tint=NSColor(calibratedRed:0.80+(0.70-0.80)*t,green:0.80+(0.95-0.80)*t,blue:0.80+(0.78-0.80)*t,alpha:1)
+                for material in coordinator.materials[i] ?? [] {material.diffuse.contents=tint} }
             if coordinator.highlightedKeys != highlights {
                 for material in coordinator.materials[i] ?? [] {material.emission.contents = highlights.contains(i) ? NSColor(calibratedRed:0.10,green:0.32,blue:0.20,alpha:1) : NSColor.black}
             }
@@ -288,13 +350,13 @@ struct MacropadModelView:NSViewRepresentable {
         coordinator.highlightedKeys=highlights
         SCNTransaction.commit()
         let l=model.config.layers[model.layer].light
-        let signature="\(model.lightingPreviewActive)|\(l.effectiveEffect)|\(l.colorful)|\(l.color)|\(model.effectiveLightBrightness)|\(l.speed)"
+        let signature="\(model.lightingPreviewActive)|\(l.effectiveEffect)|\(l.colorful)|\(l.color)|\(l.speed)"
         if signature != coordinator.lightingSignature {
             coordinator.lightingSignature=signature
             let hex=l.color.trimmingCharacters(in:CharacterSet(charactersIn:"#"))
             let rgb=Int(hex,radix:16) ?? 0xA6F0CA
             let color=NSColor(calibratedRed:CGFloat((rgb>>16)&255)/255,green:CGFloat((rgb>>8)&255)/255,blue:CGFloat(rgb&255)/255,alpha:1)
-            let level=model.lightingPreviewActive && l.effectiveEffect != "Kapalı" ? CGFloat(model.effectiveLightBrightness/100) : 0
+            let level=model.lightingPreviewActive && l.effectiveEffect != "Kapalı" ? 1.0 : 0
             for (i,node) in coordinator.leds.enumerated() {
                 let reactive = ["Tepkisel","Basılan yerden dalga","Derinliğe duyarlı","Derinliğe duyarlı dalga"].contains(l.effectiveEffect)
                 node.removeAllActions();node.opacity=reactive || l.effectiveEffect == "Kayan ışık" ? 0 : level
@@ -306,13 +368,13 @@ struct MacropadModelView:NSViewRepresentable {
         if ["Nefes","Dalga"].contains(l.effectiveEffect) {
             let now=Date.timeIntervalSinceReferenceDate,duration=max(0.3,3.0-l.speed*0.025)
             for (i,node) in coordinator.leds.enumerated() {
-                node.opacity=CGFloat((model.lightingPreviewActive ? model.effectiveLightBrightness/100 : 0)*model.pulseIntensity(i,at:now,duration:duration,wave:l.effectiveEffect == "Dalga"))
+                node.opacity=CGFloat((model.lightingPreviewActive ? 1.0 : 0)*model.pulseIntensity(i,at:now,duration:duration,wave:l.effectiveEffect == "Dalga"))
                 if l.colorful {let shade=model.cycleColor(i,at:now,duration:duration,wave:l.effectiveEffect == "Dalga");for piece in node.childNodes {piece.geometry?.firstMaterial?.diffuse.contents=shade}}
             }
         }
         if l.effectiveEffect == "Yılan" {
             let now=Date.timeIntervalSinceReferenceDate,duration=max(0.3,3.0-l.speed*0.025)
-            let level=model.lightingPreviewActive ? model.effectiveLightBrightness/100 : 0
+            let level:Double = model.lightingPreviewActive ? 1.0 : 0
             for (i,node) in coordinator.leds.enumerated() {
                 node.opacity=CGFloat(level*model.snakeIntensity(i,at:now,duration:duration))
                 if l.colorful {let shade=model.snakeColor(at:now,duration:duration);for piece in node.childNodes {piece.geometry?.firstMaterial?.diffuse.contents=shade}}
@@ -320,7 +382,7 @@ struct MacropadModelView:NSViewRepresentable {
         }
         if l.effectiveEffect == "Starlight" {
             let now=Date.timeIntervalSinceReferenceDate,duration=max(0.3,3.0-l.speed*0.025)
-            let level=model.lightingPreviewActive ? model.effectiveLightBrightness/100 : 0
+            let level:Double = model.lightingPreviewActive ? 1.0 : 0
             for (i,node) in coordinator.leds.enumerated() {
                 node.opacity=CGFloat(level*model.starlightIntensity(i,at:now,duration:duration))
                 if l.colorful {let shade=model.starlightColor(i,at:now,duration:duration);for piece in node.childNodes {piece.geometry?.firstMaterial?.diffuse.contents=shade}}
@@ -335,7 +397,7 @@ struct MacropadModelView:NSViewRepresentable {
         }
         if ["Derinliğe duyarlı","Derinliğe duyarlı dalga","Basılan yerden dalga"].contains(l.effectiveEffect) {
             let now=Date.timeIntervalSinceReferenceDate
-            let brightness=model.lightingPreviewActive ? model.effectiveLightBrightness/100 : 0
+            let brightness:Double = model.lightingPreviewActive ? 1.0 : 0
             for (i,node) in coordinator.leds.enumerated() {
                 let intensity=l.effectiveEffect == "Basılan yerden dalga" ? model.waveLight(i,at:now,sensitive:false) : model.pressureLight(i,at:now)
                 node.opacity=CGFloat(brightness*intensity)
@@ -352,7 +414,7 @@ struct MacropadModelView:NSViewRepresentable {
         if l.baseEffect == "Kayan ışık" {
             let now=Date.timeIntervalSinceReferenceDate,duration=max(0.3,3.0-l.speed*0.025)
             for (i,node) in coordinator.leds.enumerated() {
-                node.opacity=CGFloat((model.lightingPreviewActive ? model.effectiveLightBrightness/100 : 0)*model.sweepIntensity(i,at:now,duration:duration))
+                node.opacity=CGFloat((model.lightingPreviewActive ? 1.0 : 0)*model.sweepIntensity(i,at:now,duration:duration))
                 if l.colorful {
                     let shade=model.sweepColor(i,at:now,duration:duration)
                     for piece in node.childNodes {piece.geometry?.firstMaterial?.diffuse.contents=shade}
@@ -362,7 +424,7 @@ struct MacropadModelView:NSViewRepresentable {
         if model.lightingPreviewActive, let hit=model.lightHit, hit.id != coordinator.lastLightHit,
            l.effectiveEffect == "Tepkisel" {
             coordinator.lastLightHit=hit.id
-            let duration=max(0.3,3.0-l.speed*0.025), level=CGFloat(model.effectiveLightBrightness/100)
+            let duration=max(0.3,3.0-l.speed*0.025), level:CGFloat = 1.0
             for (i,node) in coordinator.leds.enumerated() {
                 guard l.effectiveEffect != "Tepkisel" || i == hit.key else {continue}
                 if l.colorful {for piece in node.childNodes {piece.geometry?.firstMaterial?.diffuse.contents=model.reactiveColor(i)}}
